@@ -1,15 +1,15 @@
 // src/models/userpaymenttransactions.model.js
 const mongoose = require('mongoose');
 
-// Register the model with flexible schema (no strict fields)
 const UserPaymentTransactionSchema = new mongoose.Schema({}, {
   strict: false,
+  // <-- make sure this matches the actual collection name in MongoDB
   collection: 'userpaymenttransctions',
   timestamps: false
 });
 
-// Register only if not already registered
-const UserPaymentTransaction = mongoose.models.userpaymenttransactions 
-  || mongoose.model('userpaymenttransctions', UserPaymentTransactionSchema);
+// Register model (avoid duplicate model registration errors)
+const modelName = 'UserPaymentTransaction';
+const UserPaymentTransaction = mongoose.models[modelName] || mongoose.model(modelName, UserPaymentTransactionSchema);
 
 module.exports = UserPaymentTransaction;

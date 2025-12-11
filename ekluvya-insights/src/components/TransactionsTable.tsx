@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/TransactionsTable.tsx
 import { Transaction } from "@/types";
 import {
@@ -9,13 +10,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { format, parseISO } from "date-fns";
-import { User, Phone, Mail, MapPin } from "lucide-react";
+import { format, parseISO, parse } from "date-fns";
+import {
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
   isLoading: boolean;
   onCouponClick: (code: string) => void;
+  sortDirection?: "asc" | "desc";
+  onToggleSort?: () => void;
 }
 
 const TableSkeleton = () => (
@@ -32,18 +42,43 @@ const TableSkeleton = () => (
   </>
 );
 
+const parseAnyDate = (raw?: string | number | Date): Date => {
+  if (!raw) return new Date(0);
+  if (raw instanceof Date) return raw;
+  if (typeof raw === "number") return new Date(raw);
+
+  const s = String(raw).trim();
+  try {
+    const d = parse(s, "dd-MM-yyyy HH:mm:ss", new Date());
+    if (!isNaN(d.getTime())) return d;
+  } catch {
+    // ignore
+  }
+
+  // Try ISO
+  try {
+    const d = parseISO(s);
+    if (!isNaN(d.getTime())) return d;
+  } catch {
+    // ignore
+  }
+
+  // Last resort
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? new Date(0) : d;
+};
+
 const TransactionsTable = ({
   transactions,
   isLoading,
   onCouponClick,
+  sortDirection = "desc",
+  onToggleSort,
 }: TransactionsTableProps) => {
-  const formatDate = (dateString: string) => {
-    try {
-      const date = parseISO(dateString);
-      return format(date, "MMM d, yyyy h:mm a");
-    } catch {
-      return dateString;
-    }
+  const formatDate = (dateRaw?: string | number | Date) => {
+    const d = parseAnyDate(dateRaw as any);
+    // keep same format as your UI: dd-MM-yyyy HH:mm:ss
+    return format(d, "dd-MM-yyyy HH:mm:ss");
   };
 
   return (
@@ -52,17 +87,57 @@ const TransactionsTable = ({
         <Table>
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
-              <TableHead className="text-muted-foreground font-semibold">Date & Time (IST)</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">User Name</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">Phone</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">Email</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">Coupon Code</TableHead>
-              <TableHead className="text-muted-foreground font-semibold text-right">Amount</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">Agent Name</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">Agent Phone</TableHead>
-              <TableHead className="text-muted-foreground font-semibold">Agent Location</TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                <div className="flex items-center gap-2">
+                  <span>Date & Time (IST)</span>
+
+                  {/* Sort toggle button inside header */}
+                  <button
+                    onClick={() => onToggleSort?.()}
+                    className="inline-flex items-center justify-center rounded p-1 hover:bg-muted/20"
+                    aria-label={
+                      sortDirection === "desc"
+                        ? "Sort by date: newest first (click to show oldest first)"
+                        : "Sort by date: oldest first (click to show newest first)"
+                    }
+                    title="Toggle sort by date"
+                  >
+                    {sortDirection === "desc" ? (
+                      <ChevronDown className="h-4 w-4 text-foreground" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 text-foreground" />
+                    )}
+                  </button>
+                </div>
+              </TableHead>
+
+              <TableHead className="text-muted-foreground font-semibold">
+                User Name
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                Phone
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                Email
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                Coupon Code
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold text-right">
+                Amount
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                Agent Name
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                Agent Phone
+              </TableHead>
+              <TableHead className="text-muted-foreground font-semibold">
+                Agent Location
+              </TableHead>
             </TableRow>
           </TableHeader>
+
           <TableBody>
             {isLoading ? (
               <TableSkeleton />
@@ -85,51 +160,69 @@ const TransactionsTable = ({
                   <TableCell className="font-medium text-xs">
                     {formatDate(transaction.date_ist)}
                   </TableCell>
+
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
                         <User className="h-4 w-4 text-primary" />
                       </div>
-                      <span className="font-medium">{transaction.userName}</span>
+                      <span className="font-medium">
+                        {transaction.userName}
+                      </span>
                     </div>
                   </TableCell>
+
                   <TableCell>
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <Phone className="h-3 w-3" />
                       <span className="text-sm">{transaction.phone}</span>
                     </div>
                   </TableCell>
+
                   <TableCell>
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <Mail className="h-3 w-3" />
-                      <span className="text-sm truncate max-w-[150px]">{transaction.email}</span>
+                      <span className="text-sm truncate max-w-[150px]">
+                        {transaction.email}
+                      </span>
                     </div>
                   </TableCell>
+
                   <TableCell>
                     <Badge
                       variant="outline"
                       className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors font-mono"
-                      onClick={() => onCouponClick(transaction.couponText || "")}
+                      onClick={() =>
+                        onCouponClick(transaction.couponText || "")
+                      }
                     >
                       {transaction.couponText || "N/A"}
                     </Badge>
                   </TableCell>
+
                   <TableCell className="text-right">
                     <span className="font-semibold text-success">
                       ₹{transaction.amount.toLocaleString()}
                     </span>
                   </TableCell>
-                  <TableCell className="font-medium">{transaction.agentName}</TableCell>
+
+                  <TableCell className="font-medium">
+                    {transaction.agentName}
+                  </TableCell>
+
                   <TableCell>
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <Phone className="h-3 w-3" />
                       <span className="text-sm">{transaction.agentPhone}</span>
                     </div>
                   </TableCell>
+
                   <TableCell>
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <MapPin className="h-3 w-3" />
-                      <span className="text-sm">{transaction.agentLocation}</span>
+                      <span className="text-sm">
+                        {transaction.agentLocation}
+                      </span>
                     </div>
                   </TableCell>
                 </TableRow>

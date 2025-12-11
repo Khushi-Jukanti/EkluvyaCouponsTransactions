@@ -1,211 +1,6 @@
-// // src/pages/Index.tsx
-// import { useState } from "react";
-// import { Search, Tag, RefreshCw } from "lucide-react";
-// import { Input } from "@/components/ui/input";
-// import { Button } from "@/components/ui/button";
-// import Navbar from "@/components/Navbar";
-// import TransactionsTable from "@/components/TransactionsTable";
-// import DateRangePicker from "@/components/DateRangePicker";
-// import Pagination from "@/components/Pagination";
-// import ExportButton from "@/components/ExportButton";
-// import CouponSearchModal from "@/components/CouponSearchModal";
-// import CouponUsersModal from "@/components/CouponUsersModal";
-// import { useTransactions } from "@/hooks/useTransactions";
-// import { DateRange } from "@/types";
-// import { toast } from "sonner";
-// import { format, subDays } from "date-fns";
-
-// const Index = () => {
-//   const [page, setPage] = useState(1);
-//   const [couponFilter, setCouponFilter] = useState("");
-//   const [appliedCouponFilter, setAppliedCouponFilter] = useState("");
-//   const [dateRange, setDateRange] = useState<DateRange>({
-//     start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
-//     end: format(new Date(), "yyyy-MM-dd"),
-//   });
-//   const [couponSearchOpen, setCouponSearchOpen] = useState(false);
-//   const [couponUsersOpen, setCouponUsersOpen] = useState(false);
-//   const [selectedCoupon, setSelectedCoupon] = useState("");
-
-//   const { data, isLoading, error, refetch, isFetching } = useTransactions({
-//     page,
-//     limit: 20,
-//     dateRange,
-//     coupon: appliedCouponFilter,
-//   });
-
-//   const handleCouponFilterApply = () => {
-//     setAppliedCouponFilter(couponFilter);
-//     setPage(1);
-//   };
-
-//   const handleCouponClick = (code: string) => {
-//     setSelectedCoupon(code);
-//     setCouponUsersOpen(true);
-//   };
-
-//   const handleViewUsersFromSearch = (code: string) => {
-//     setSelectedCoupon(code);
-//     setCouponSearchOpen(false);
-//     setCouponUsersOpen(true);
-//   };
-
-//   const handleRefresh = () => {
-//     refetch();
-//     toast.success("Data refreshed");
-//   };
-
-//   if (error) {
-//     toast.error("Failed to load transactions", {
-//       description: "Please check your connection and try again",
-//     });
-//   }
-
-//   return (
-//     <div className="min-h-screen bg-background bg-grid-pattern">
-//       <Navbar
-//         totalTransactions={data?.total || 0}
-//         todayRevenue={0} // You can add this later
-//         isLoading={isLoading}
-//       />
-
-//       <main className="container mx-auto px-4 py-8">
-//         <div className="space-y-6">
-//           {/* Header */}
-//           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-//             <div>
-//               <h2 className="text-2xl font-bold tracking-tight">All Transactions</h2>
-//               <p className="text-muted-foreground">
-//                 View and manage subscription transactions
-//               </p>
-//             </div>
-//             <Button
-//               variant="glow"
-//               onClick={() => setCouponSearchOpen(true)}
-//               className="gap-2"
-//             >
-//               <Tag className="h-4 w-4" />
-//               Search Coupon
-//             </Button>
-//           </div>
-
-//           {/* Filters */}
-//           <div className="glass-card rounded-xl p-4">
-//             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-//               <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-//                 <div className="relative flex-1 sm:w-[280px]">
-//                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-//                   <Input
-//                     placeholder="Filter by coupon code..."
-//                     value={couponFilter}
-//                     onChange={(e) => setCouponFilter(e.target.value.toUpperCase())}
-//                     onKeyPress={(e) => e.key === "Enter" && handleCouponFilterApply()}
-//                     className="pl-10 font-mono"
-//                   />
-//                 </div>
-//                 <Button variant="secondary" onClick={handleCouponFilterApply}>
-//                   Apply Filter
-//                 </Button>
-//                 {appliedCouponFilter && (
-//                   <Button
-//                     variant="ghost"
-//                     onClick={() => {
-//                       setCouponFilter("");
-//                       setAppliedCouponFilter("");
-//                     }}
-//                     className="text-muted-foreground"
-//                   >
-//                     Clear
-//                   </Button>
-//                 )}
-//               </div>
-
-//               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center w-full lg:w-auto">
-//                 <DateRangePicker
-//                   dateRange={dateRange}
-//                   onDateRangeChange={(range) => {
-//                     setDateRange(range);
-//                     setPage(1);
-//                   }}
-//                 />
-//               </div>
-//             </div>
-//           </div>
-
-//           {/* Actions Bar */}
-//           <div className="flex items-center justify-between">
-//             <div className="text-sm text-muted-foreground">
-//               {data && (
-//                 <span>
-//                   Showing{" "}
-//                   <span className="font-medium text-foreground">
-//                     {(page - 1) * 20 + 1}-{Math.min(page * 20, data.total)}
-//                   </span>{" "}
-//                   of{" "}
-//                   <span className="font-medium text-foreground">{data.total}</span>{" "}
-//                   transactions
-//                 </span>
-//               )}
-//             </div>
-//             <div className="flex items-center gap-2">
-//               <Button
-//                 variant="ghost"
-//                 size="sm"
-//                 onClick={handleRefresh}
-//                 disabled={isFetching}
-//                 className="gap-2"
-//               >
-//                 <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-//                 Refresh
-//               </Button>
-//               <ExportButton
-//                 transactions={data?.data || []}  // ← NOW CORRECT
-//                 isLoading={isLoading}
-//               />
-//             </div>
-//           </div>
-
-//           {/* Table */}
-//           <TransactionsTable
-//             transactions={data?.data || []}   // ← NOW MATCHES BACKEND
-//             isLoading={isLoading}
-//             onCouponClick={handleCouponClick}
-//           />
-
-//           {/* Pagination */}
-//           {data && (
-//             <Pagination
-//               currentPage={page}
-//               totalPages={data.pages}   // ← Fixed: data.pages not data.totalPages
-//               onPageChange={setPage}
-//               isLoading={isLoading}
-//             />
-//           )}
-//         </div>
-//       </main>
-
-//       {/* Modals */}
-//       <CouponSearchModal
-//         open={couponSearchOpen}
-//         onOpenChange={setCouponSearchOpen}
-//         onViewUsers={handleViewUsersFromSearch}
-//       />
-
-//       <CouponUsersModal
-//         open={couponUsersOpen}
-//         onOpenChange={setCouponUsersOpen}
-//         couponCode={selectedCoupon}
-//       />
-//     </div>
-//   );
-// };
-
-// export default Index;
-
-
-
 // src/pages/Index.tsx
-import { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Search, Tag, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -214,72 +9,203 @@ import TransactionsTable from "@/components/TransactionsTable";
 import DateRangePicker from "@/components/DateRangePicker";
 import Pagination from "@/components/Pagination";
 import ExportButton from "@/components/ExportButton";
-import CouponSearchModal from "@/components/CouponSearchModal";
 import CouponUsersModal from "@/components/CouponUsersModal";
 import { useTransactions } from "@/hooks/useTransactions";
+import { useCouponSearch } from "@/hooks/useCouponSearch";
 import { DateRange } from "@/types";
 import { toast } from "sonner";
-import { format, subDays } from "date-fns";
+import { format, parse, parseISO, subDays } from "date-fns";
 
-const Index = () => {
+// Popover components (shadcn-style)
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+
+const PAGE_SIZE = 50;
+type SortDirection = "desc" | "asc";
+
+const parseAnyDate = (raw?: string | number | Date): Date => {
+  if (!raw) return new Date(0);
+  if (raw instanceof Date) return raw;
+  if (typeof raw === "number") return new Date(raw);
+
+  const s = String(raw).trim();
+
+  // Try dd-MM-yyyy HH:mm:ss
+  try {
+    const d = parse(s, "dd-MM-yyyy HH:mm:ss", new Date());
+    if (!isNaN(d.getTime())) return d;
+  } catch {}
+
+  // Try ISO
+  try {
+    const d = parseISO(s);
+    if (!isNaN(d.getTime())) return d;
+  } catch {}
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? new Date(0) : d;
+};
+
+const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({
     start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
-  const [couponSearchOpen, setCouponSearchOpen] = useState(false);
+
+  // coupon popover states
+  const [couponPopoverOpen, setCouponPopoverOpen] = useState(false);
+  const [couponSearchCode, setCouponSearchCode] = useState("");
+  const [couponSearchTrigger, setCouponSearchTrigger] = useState("");
+
   const [couponUsersOpen, setCouponUsersOpen] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState("");
 
-  // Main query — 50 per page
+  // DEFAULT: latest first (desc). Server expects sortOrder=desc|asc
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  // Mounted guard for portal (avoid SSR mismatch)
+  const [mounted, setMounted] = useState(false);
+
+  // This must come BEFORE useTransactions
+  const isSearching = Boolean(searchQuery.trim());
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+  if (!couponPopoverOpen) {
+    setCouponSearchCode("");
+    setCouponSearchTrigger("");
+  }
+}, [couponPopoverOpen]);
+
+  // // transactions fetch (50 per page) - pass sort to server
+  // const { data, isLoading, error, refetch, isFetching } = useTransactions({
+  //   page,
+  //   limit: PAGE_SIZE,
+  //   dateRange,
+  //   coupon: "",
+  //   sortOrder: sortDirection, // backend param expected
+  // });
+
+  // Fetch up to 5000 records when searching, otherwise paginated
   const { data, isLoading, error, refetch, isFetching } = useTransactions({
-    page,
-    limit: 50,  // ← 50 ROWS PER PAGE
+    page: isSearching ? 1 : page,
+    limit: isSearching ? 5000 : PAGE_SIZE,
     dateRange,
-    coupon: "", // We'll filter on frontend
+    coupon: "",
+    sortOrder: sortDirection,
   });
 
-  // Frontend filtering (search by anything)
+  // coupon search hook
+  const {
+    data: coupon,
+    isLoading: isCouponLoading,
+    error: couponError,
+    isFetched: couponIsFetched,
+  } = useCouponSearch(couponSearchTrigger, couponSearchTrigger.length > 0);
+
+  // frontend filtering across the returned page(s)
   const filteredTransactions = useMemo(() => {
     if (!data?.data || !searchQuery.trim()) return data?.data || [];
 
     const q = searchQuery.toLowerCase().trim();
 
     return data.data.filter((t: any) => {
-      const coupon = String(t.couponText || "").toLowerCase();
-      const phone = String(t.phone || "").toLowerCase();
-      const userName = String(t.userName || "").toLowerCase();
-      const amount = String(t.amount || "").toLowerCase();
-      const agentName = String(t.agentName || "").toLowerCase();
-      const agentPhone = String(t.agentPhone || "").toLowerCase();
+      // const couponTxt = String(
+      //   t.couponText ?? t.coupon ?? t.coupon_code ?? t.couponCode ?? ""
+      // ).toLowerCase();
+      const phone = String(t.phone ?? t.userPhone ?? "").toLowerCase();
+      const userName = String(t.userName ?? t.name ?? "").toLowerCase();
+      const amount = String(t.amount ?? "").toLowerCase();
+      const agentName = String(t.agentName ?? "").toLowerCase();
+      const agentPhone = String(t.agentPhone ?? "").toLowerCase();
+      const agentLocation = String(
+        t.agentLocation ?? t.location ?? ""
+      ).toLowerCase();
+      const email = String(t.email ?? "").toLowerCase();
 
       return (
-        coupon.includes(q) ||
+        // couponTxt.includes(q) ||
         phone.includes(q) ||
         userName.includes(q) ||
         amount.includes(q) ||
         agentName.includes(q) ||
-        agentPhone.includes(q)
+        agentPhone.includes(q) ||
+        agentLocation.includes(q) ||
+        email.includes(q)
       );
     });
   }, [data?.data, searchQuery]);
 
+  // const isSearching = Boolean(searchQuery.trim());
+
+  // baseline list (either server page or filtered page)
+  const baselineList = useMemo(
+    () => (isSearching ? filteredTransactions : data?.data || []),
+    [isSearching, filteredTransactions, data?.data]
+  );
+
+  const displayedTransactions = useMemo(() => {
+    if (!baselineList) return [];
+    if (!isSearching) return baselineList; // use server ordering for full pages
+    // when searching (client-side), sort the filtered subset to reflect user's sort choice
+    const copy = [...baselineList];
+    copy.sort((a: any, b: any) => {
+      const da = parseAnyDate(
+        a.date_ist ?? a.createdDate ?? a.dateTime ?? a.createdAt
+      ).getTime();
+      const db = parseAnyDate(
+        b.date_ist ?? b.createdDate ?? b.dateTime ?? b.createdAt
+      ).getTime();
+      return sortDirection === "desc" ? db - da : da - db;
+    });
+    return copy;
+  }, [baselineList, sortDirection, isSearching]);
+
   const totalFiltered = filteredTransactions.length;
-  const totalPages = data ? Math.ceil(data.total / 50) : 1;
+  const totalSourceCount = isSearching ? totalFiltered : data?.total || 0;
+  const totalPages = isSearching
+    ? Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE))
+    : Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
+
+  const rangeStart =
+    displayedTransactions.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = isSearching
+    ? Math.min(page * PAGE_SIZE, totalFiltered)
+    : Math.min(page * PAGE_SIZE, data?.total || 0);
+
+  const handleCouponSearch = () => {
+    if (!couponSearchCode.trim()) {
+      toast.error("Please enter a coupon code");
+      return;
+    }
+    setCouponSearchTrigger(couponSearchCode.trim().toUpperCase());
+  };
+
+  const handleCouponKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") handleCouponSearch();
+  };
+
+  const handleViewUsersFromSearch = (code: string) => {
+    setSelectedCoupon(code);
+    setCouponPopoverOpen(false);
+    setCouponUsersOpen(true);
+  };
 
   const handleCouponClick = (code: string) => {
     setSelectedCoupon(code);
     setCouponUsersOpen(true);
   };
 
-  const handleViewUsersFromSearch = (code: string) => {
-    setSelectedCoupon(code);
-    setCouponSearchOpen(false);
-    setCouponUsersOpen(true);
-  };
-
   const handleRefresh = () => {
+    // refetch current page/sort
     refetch();
     toast.success("Data refreshed");
   };
@@ -287,6 +213,21 @@ const Index = () => {
   if (error) {
     toast.error("Failed to load transactions");
   }
+
+  // toggle sort: flips between desc <-> asc, and request page 1 from server
+  const toggleSort = () => {
+    const next: SortDirection = sortDirection === "desc" ? "asc" : "desc";
+    setSortDirection(next);
+    setPage(1);
+    refetch();
+  };
+
+  // ensure dateRange changes reset page and refetch
+  const onDateRangeChange = (range: DateRange) => {
+    setDateRange(range);
+    setPage(1);
+    refetch();
+  };
 
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
@@ -301,19 +242,161 @@ const Index = () => {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight">All Transactions</h2>
+              <h2 className="text-2xl font-bold tracking-tight">
+                All Transactions
+              </h2>
               <p className="text-muted-foreground">
-                Search by Coupon, Mobile, Name, Amount, or Agent
+                Search by Mobile, Name, Amount, or Agent
               </p>
             </div>
-            <Button
-              variant="glow"
-              onClick={() => setCouponSearchOpen(true)}
-              className="gap-2"
-            >
-              <Tag className="h-4 w-4" />
-              Search Coupon
-            </Button>
+
+            <div className="flex items-center gap-2">
+              <Popover
+                open={couponPopoverOpen}
+                onOpenChange={setCouponPopoverOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button variant="glow" className="gap-2">
+                    <Tag className="h-4 w-4" />
+                    Search Coupon
+                  </Button>
+                </PopoverTrigger>
+
+                <PopoverContent
+                  side="bottom"
+                  align="end"
+                  className="w-[540px] p-4 glass-card-elevated border-border/50"
+                >
+                  {/* coupon UI kept same */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-lg font-semibold flex items-center gap-2">
+                      <Search className="h-5 w-5 text-primary" />
+                      Search Coupon Code
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCouponPopoverOpen(false)}
+                    >
+                      Close
+                    </Button>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Enter coupon code (e.g., ARAM8893)"
+                        value={couponSearchCode}
+                        onChange={(e) =>
+                          setCouponSearchCode(e.target.value.toUpperCase())
+                        }
+                        onKeyPress={handleCouponKeyPress}
+                        className="font-mono text-lg h-12"
+                      />
+                      <Button
+                        onClick={handleCouponSearch}
+                        disabled={isCouponLoading}
+                        className="h-12 px-6"
+                        variant="glow"
+                      >
+                        {isCouponLoading ? (
+                          <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                        ) : (
+                          <Search className="h-5 w-5" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {couponError && couponIsFetched && (
+                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-center">
+                        Coupon not found or inactive
+                      </div>
+                    )}
+
+                    {coupon && (
+                      <div className="space-y-4 animate-slide-up">
+                        <div className="flex items-center gap-3">
+                          <div className="h-14 w-14 rounded-xl gradient-primary flex items-center justify-center text-2xl font-bold text-primary-foreground">
+                            {coupon.coupon.substring(0, 2)}
+                          </div>
+                          <div>
+                            <h3 className="font-mono text-xl font-bold">
+                              {coupon.coupon}
+                            </h3>
+                            <div className={`inline-flex items-center gap-2`}>
+                              <span
+                                className={`px-2 py-1 rounded-md text-sm ${
+                                  coupon.active
+                                    ? "bg-success text-foreground"
+                                    : "bg-destructive text-destructive-foreground"
+                                }`}
+                              >
+                                {coupon.active ? "Active" : "Inactive"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="stat-card">
+                            <div className="text-xs text-muted-foreground mb-1">
+                              Discount
+                            </div>
+                            <p className="font-semibold text-lg">
+                              {coupon.discount}%
+                            </p>
+                          </div>
+                          <div className="stat-card">
+                            <div className="text-xs text-muted-foreground mb-1">
+                              Usage Limit
+                            </div>
+                            <p className="font-semibold text-lg">
+                              {coupon.usageLimit}
+                            </p>
+                          </div>
+                          <div className="stat-card col-span-2">
+                            <div className="text-xs text-muted-foreground mb-1">
+                              Plan
+                            </div>
+                            <p className="font-semibold">{coupon.plan}</p>
+                          </div>
+                        </div>
+
+                        {coupon.agent && (
+                          <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                            <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                              Agent Details
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="text-sm">{coupon.agent.name}</div>
+                              <div className="text-sm">
+                                {coupon.agent.phone}
+                              </div>
+                              <div className="text-sm truncate">
+                                {coupon.agent.email}
+                              </div>
+                              <div className="text-sm">
+                                {coupon.agent.location}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <Button
+                          onClick={() =>
+                            handleViewUsersFromSearch(coupon.coupon)
+                          }
+                          className="w-full"
+                          variant="glow"
+                        >
+                          View All Users Who Used This Coupon
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           {/* Global Search + Date */}
@@ -323,29 +406,34 @@ const Index = () => {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
-                    placeholder="Search by coupon, mobile, name, amount, agent..."
+                    placeholder="Search by mobile, name, amount, agent..."
                     value={searchQuery}
                     onChange={(e) => {
-                      setSearchQuery(e.target.value);
+                      setSearchQuery(e.target.value.trim().toLowerCase());
                       setPage(1);
                     }}
                     className="pl-11 h-12 text-base font-medium"
                   />
                 </div>
-                {searchQuery && (
+                {isSearching && (
                   <div className="mt-2 text-sm text-muted-foreground">
-                    Found <span className="font-bold text-foreground">{totalFiltered}</span> matching transactions
+                    Found{" "}
+                    <span className="font-bold text-foreground">
+                      {totalFiltered}
+                    </span>{" "}
+                    matching transactions
                   </div>
                 )}
               </div>
 
-              <DateRangePicker
-                dateRange={dateRange}
-                onDateRangeChange={(range) => {
-                  setDateRange(range);
-                  setPage(1);
-                }}
-              />
+              <div className="flex items-center gap-3">
+                <DateRangePicker
+                  dateRange={dateRange}
+                  onDateRangeChange={onDateRangeChange}
+                />
+
+                {/* Sort indicator and toggle */}
+              </div>
             </div>
           </div>
 
@@ -354,49 +442,72 @@ const Index = () => {
             <div className="text-sm text-muted-foreground">
               Showing{" "}
               <span className="font-medium text-foreground">
-                {data ? (page - 1) * 50 + 1 : 0}-{Math.min(page * 50, data?.total || 0)}
+                {rangeStart}-{rangeEnd}
               </span>{" "}
-              of <span className="font-medium text-foreground">{data?.total || 0}</span> total transactions
-              {searchQuery && ` • ${totalFiltered} filtered`}
+              of{" "}
+              <span className="font-medium text-foreground">
+                {totalSourceCount}
+              </span>{" "}
+              {isSearching ? "matching transactions" : "total transactions"}
+              {isSearching && (
+                <span className="text-muted-foreground">{" • "}filtered</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isFetching}>
-                <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isFetching}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+                />
                 Refresh
               </Button>
-              <ExportButton transactions={filteredTransactions} isLoading={isLoading} />
+              {/* <ExportButton
+                transactions={displayedTransactions}
+                isLoading={isLoading}
+              /> */}
+              <ExportButton dateRange={dateRange} />
             </div>
           </div>
 
           {/* Table */}
           <TransactionsTable
-            transactions={filteredTransactions}
+            transactions={displayedTransactions}
             isLoading={isLoading}
             onCouponClick={handleCouponClick}
+            sortDirection={sortDirection}
+            onToggleSort={toggleSort}
           />
 
           {/* Pagination */}
-          <Pagination
-            currentPage={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-            isLoading={isLoading}
-          />
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={(p) => {
+                setPage(p);
+                // refetch to ensure server page loads (useTransactions also auto-refetches on key change)
+                refetch();
+              }}
+              isLoading={isLoading}
+            />
+          )}
         </div>
       </main>
 
-      {/* Modals */}
-      <CouponSearchModal
-        open={couponSearchOpen}
-        onOpenChange={setCouponSearchOpen}
-        onViewUsers={handleViewUsersFromSearch}
-      />
-
-      <CouponUsersModal
-        open={couponUsersOpen}
-        onOpenChange={setCouponUsersOpen}
-        couponCode={selectedCoupon}
-      />
+      {/* Coupon users modal (centered) rendered into body via portal */}
+      {mounted &&
+        createPortal(
+          <CouponUsersModal
+            open={couponUsersOpen}
+            onOpenChange={setCouponUsersOpen}
+            couponCode={selectedCoupon}
+          />,
+          document.body
+        )}
     </div>
   );
 };

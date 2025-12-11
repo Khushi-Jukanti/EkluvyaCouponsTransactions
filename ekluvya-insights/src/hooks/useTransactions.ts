@@ -2,11 +2,22 @@ import { useQuery } from "@tanstack/react-query";
 import { TransactionsResponse, DateRange } from "@/types";
 import { BASE_URL } from "@/config/api";
 
+// interface UseTransactionsParams {
+//   page: number;
+//   limit: number;
+//   dateRange?: DateRange;
+//   coupon?: string;
+//   sortOrder: "desc" | "asc"
+// }
+
 interface UseTransactionsParams {
-  page: number;
-  limit: number;
-  dateRange?: DateRange;
+  page?: number;
+  limit?: number;
+  dateRange: DateRange;
   coupon?: string;
+  sortOrder?: "asc" | "desc";
+  search?: string;
+  exportAll?: boolean; // ← NEW
 }
 
 export const fetchTransactions = async ({
@@ -14,10 +25,16 @@ export const fetchTransactions = async ({
   limit,
   dateRange,
   coupon,
+  sortOrder,
+  exportAll = false,
 }: UseTransactionsParams): Promise<TransactionsResponse> => {
+
+  const finalLimit = exportAll ? 10000 : limit;
+
   const params = new URLSearchParams({
-    page: page.toString(),
-    limit: limit.toString(),
+    page: String(page),
+    limit: String(finalLimit),
+    sort: sortOrder,        // 👈 send sorting to backend
     _t: Date.now().toString(),
   });
 
@@ -26,7 +43,7 @@ export const fetchTransactions = async ({
   if (coupon) params.append("coupon", coupon);
 
   const response = await fetch(`${BASE_URL}/transactions?${params}`, {
-    cache: "no-cache", // ← THIS ALSO HELPS
+    cache: "no-cache"
   });
 
   if (!response.ok) {
@@ -38,10 +55,18 @@ export const fetchTransactions = async ({
 
 export const useTransactions = (params: UseTransactionsParams) => {
   return useQuery({
-    queryKey: ["transactions", params.page, params.dateRange?.start, params.dateRange?.end],
+    queryKey: [
+      "transactions",
+      params.page,
+      params.limit,
+      params.dateRange?.start,
+      params.dateRange?.end,
+      params.coupon,
+      params.sortOrder,      // 👈 IMPORTANT: refetch on sort order change!
+    ],
     queryFn: () => fetchTransactions(params),
-    staleTime: 0,           // Data becomes stale immediately
-    gcTime: 0,              // ← NEW NAME (was cacheTime)
+    staleTime: 0,
+    gcTime: 0,
     refetchOnWindowFocus: true,
     retry: 2,
   });

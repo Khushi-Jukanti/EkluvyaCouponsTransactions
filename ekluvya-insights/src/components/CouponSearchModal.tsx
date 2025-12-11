@@ -1,5 +1,5 @@
 // src/components/CouponSearchModal.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, User, Phone, Mail, MapPin, Percent, Package, Hash } from "lucide-react";
 import {
   Dialog,
@@ -27,6 +27,14 @@ const CouponSearchModal = ({ open, onOpenChange, onViewUsers }: CouponSearchModa
     searchTrigger,
     searchTrigger.length > 0
   );
+
+  // Clear input & results when modal closes
+  useEffect(() => {
+    if (!open) {
+      setSearchCode("");
+      setSearchTrigger("");
+    }
+  }, [open]);
 
   const handleSearch = () => {
     if (!searchCode.trim()) {

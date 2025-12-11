@@ -1,65 +1,167 @@
 // src/controllers/transaction.controller.js
-const moment = require('moment-timezone');
-const UserPaymentTransaction = require('../models/userpaymenttransactions.model');
+const moment = require("moment-timezone");
+const UserPaymentTransaction = require("../models/userpaymenttransactions.model");
+
+// Helper: safe integer parse with default
+const toInt = (v, defaultVal) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : defaultVal;
+};
 
 const getAllTransactions = async (req, res) => {
   try {
-    const { start, end, coupon, page = 1, limit = 50 } = req.query;
-    const skip = (page - 1) * limit;
+    const {
+      start,
+      end,
+      coupon,
+      page = 1,
+      limit = 50,
+      sort = "desc", // optional sort param
+    } = req.query;
 
-    let match = { };
+    const pageNum = toInt(page, 1);
+    const limitNum = toInt(limit, 50);
+    const skip = (pageNum - 1) * limitNum;
+    const sortOrder = String(sort).toLowerCase() === "asc" ? 1 : -1;
 
-    // Date filter in IST
+    // Build date range in IST
+    let startDate = null;
+    let endDate = null;
     if (start || end) {
-      const startDate = moment.tz(start || '2020-01-01', 'Asia/Kolkata').startOf('day').toDate();
-      const endDate = moment.tz(end || new Date(), 'Asia/Kolkata').endOf('day').toDate();
-      match.created_at = { $gte: startDate, $lte: endDate };
+      startDate = moment
+        .tz(start || "1970-01-01", "Asia/Kolkata")
+        .startOf("day")
+        .toDate();
+      endDate = moment
+        .tz(end || new Date(), "Asia/Kolkata")
+        .endOf("day")
+        .toDate();
     }
 
-    if (coupon) {
-      match.coupon_text = coupon.trim().toUpperCase();
+    // Pre-match stage: narrow down by coupon (case-insensitive) and optionally by date
+    // We'll normalize creation date into `createdDate` inside the pipeline and match on it.
+    const preMatch = {};
+
+    if (coupon && String(coupon).trim().length > 0) {
+      // case-insensitive exact match (adjust to partial if needed)
+      preMatch.coupon_text = {
+        $regex: `^${String(coupon).trim()}`,
+        $options: "i",
+      };
     }
 
-    // Simple aggregation without agent lookup
-    const pipeline = [
-      { $match: match },
-      { $lookup: { from: 'users', localField: 'user_id', foreignField: '_id', as: 'user' } },
-      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-      { $lookup: { from: 'payments', localField: 'payment_id', foreignField: '_id', as: 'payment' } },
-      { $unwind: { path: '$payment', preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          transactionId: { $ifNull: ['$gud_transaction_id', '$payment.gudsho_receipt'] },
-          userName: { $trim: { input: { $concat: ['$user.first_name', ' ', { $ifNull: ['$user.last_name', ''] }] } } },
-          phone: '$user.phone',
-          email: '$user.email',
-          couponText: '$coupon_text',
-          amount: '$price',
-          paymentStatus: '$payment.status',
-          date_ist: { $dateToString: { format: '%d-%m-%Y %H:%M:%S', date: '$created_at', timezone: 'Asia/Kolkata' } },
-        }
+    // Build aggregation pipeline
+    const pipeline = [];
+
+    // First, apply any basic pre-match (coupon is indexed maybe)
+    if (Object.keys(preMatch).length) {
+      pipeline.push({ $match: preMatch });
+    }
+
+    // Add a normalized "createdDate" field (tries multiple possible date fields)
+    pipeline.push({
+      $addFields: {
+        createdDate: {
+          $ifNull: [
+            "$created_at",
+            { $ifNull: ["$createdAt", { $ifNull: ["$created", new Date(0)] }] },
+          ],
+        },
       },
-      { $sort: { created_at: -1 } },
-      { $skip: skip },
-      { $limit: parseInt(limit) }
-    ];
+    });
 
-    const [data, total] = await Promise.all([
-      UserPaymentTransaction.aggregate(pipeline),
-      UserPaymentTransaction.countDocuments(match)
-    ]);
+    // Apply date range match if provided
+    if (startDate || endDate) {
+      const dateMatch = {};
+      if (startDate) dateMatch.$gte = startDate;
+      if (endDate) dateMatch.$lte = endDate;
+      pipeline.push({ $match: { createdDate: dateMatch } });
+    }
 
-    // ADD AGENT INFO IN NODE.JS (THIS IS 100% RELIABLE)
-    const enrichedData = data.map(item => {
+    // Lookups - keep your existing lookups/unwinds
+    pipeline.push(
+      {
+        $lookup: {
+          from: "users",
+          localField: "user_id",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "payments",
+          localField: "payment_id",
+          foreignField: "_id",
+          as: "payment",
+        },
+      },
+      { $unwind: { path: "$payment", preserveNullAndEmptyArrays: true } }
+    );
+
+    // Project fields you need. Use createdDate for formatting below.
+    pipeline.push({
+      $project: {
+        transactionId: {
+          $ifNull: ["$gud_transaction_id", "$payment.gudsho_receipt"],
+        },
+        userName: {
+          $trim: {
+            input: {
+              $concat: [
+                "$user.first_name",
+                " ",
+                { $ifNull: ["$user.last_name", ""] },
+              ],
+            },
+          },
+        },
+        phone: "$user.phone",
+        email: "$user.email",
+        couponText: "$coupon_text",
+        amount: "$price",
+        paymentStatus: "$payment.status",
+        // date string formatted in IST (same as before)
+        date_ist: {
+          $dateToString: {
+            format: "%d-%m-%Y %H:%M:%S",
+            date: "$createdDate",
+            timezone: "Asia/Kolkata",
+          },
+        },
+        createdDate: 1, // pass through for sorting
+      },
+    });
+
+    // Count total matching documents (use same pipeline up to $project)
+    const countPipeline = [...pipeline, { $count: "total" }];
+    const countResult = await UserPaymentTransaction.aggregate(countPipeline);
+    const total =
+      countResult && countResult[0] && countResult[0].total
+        ? countResult[0].total
+        : 0;
+
+    // Now apply sort, skip and limit to fetch page
+    pipeline.push({ $sort: { createdDate: sortOrder } });
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: limitNum });
+
+    const data = await UserPaymentTransaction.aggregate(pipeline);
+
+    // Enrich agent info from global map (unchanged)
+    const enrichedData = data.map((item) => {
       const couponCode = item.couponText;
-      const agent = couponCode ? global.AGENT_COUPON_MAP[couponCode] : null;
+      const agent = couponCode
+        ? (global.AGENT_COUPON_MAP || {})[couponCode.toUpperCase()]
+        : null;
 
       return {
         ...item,
-        agentName: agent?.agentName || 'No Agent',
-        agentPhone: agent?.phone || 'N/A',
-        agentLocation: agent?.location || 'N/A',
-        agentType: agent?.agentType || 'N/A'
+        agentName: agent?.agentName || "No Agent",
+        agentPhone: agent?.phone || "N/A",
+        agentLocation: agent?.location || "N/A",
+        agentType: agent?.agentType || "N/A",
       };
     });
 
@@ -67,13 +169,12 @@ const getAllTransactions = async (req, res) => {
       success: true,
       count: enrichedData.length,
       total,
-      page: parseInt(page),
-      pages: Math.ceil(total / limit),
-      data: enrichedData
+      page: pageNum,
+      pages: Math.ceil(total / limitNum),
+      data: enrichedData,
     });
-
   } catch (err) {
-    console.error('Transaction Error:', err.message);
+    console.error("Transaction Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
