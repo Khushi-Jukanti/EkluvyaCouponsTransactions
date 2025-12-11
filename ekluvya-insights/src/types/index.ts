@@ -57,7 +57,8 @@ export interface Transaction {
   date_ist: string;
   agentName: string;
   agentPhone: string;
-  agentLocation: string;
+  agentLocation: string;     
+  paymentStatusText?: string;    // "Success" or "Failed"
 }
 
 export interface TransactionsResponse {

@@ -1,15 +1,31 @@
-import { TrendingUp, CreditCard, Moon, Sun } from "lucide-react";
+import { TrendingUp, CreditCard, Moon, Sun, FilterIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useEffect, useState } from "react";
+
+type StatusFilter = "all" | "success" | "failed";
 
 interface NavbarProps {
   totalTransactions: number;
-  todayRevenue: number;
+  allTransactions: any[];
   isLoading?: boolean;
+  onStatusFilterChange?: (filter: StatusFilter) => void;
 }
 
-const Navbar = ({ totalTransactions, todayRevenue, isLoading }: NavbarProps) => {
+const Navbar = ({
+  totalTransactions,
+  allTransactions = [],
+  isLoading = false,
+  onStatusFilterChange,
+ }: NavbarProps) => {
   const [isDark, setIsDark] = useState(true);
+  const [selectedFilter, setSelectedFilter] = useState<StatusFilter>("all");
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -20,9 +36,27 @@ const Navbar = ({ totalTransactions, todayRevenue, isLoading }: NavbarProps) => 
     document.documentElement.classList.toggle("dark");
   };
 
+  const handleFilterChange = (value: StatusFilter) => {
+    setSelectedFilter(value);
+    onStatusFilterChange?.(value);
+  };
+
+  // Count from FULL list (not just current page)
+  const successCount = allTransactions.filter(t => t.paymentStatus === 2).length;
+  const failedCount = allTransactions.filter(t => t.paymentStatus === 3).length;
+
+  const displayCount = selectedFilter === "success"
+    ? successCount
+    : selectedFilter === "failed"
+      ? failedCount
+      : totalTransactions;
+
+  const filterLabel = selectedFilter === "all" ? "Total" : selectedFilter.charAt(0).toUpperCase() + selectedFilter.slice(1);
+
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
+      <div className="container mx-auto flex h-20 items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary glow-sm">
             <span className="text-lg font-bold text-primary-foreground">E</span>
@@ -34,21 +68,32 @@ const Navbar = ({ totalTransactions, todayRevenue, isLoading }: NavbarProps) => 
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="stat-card flex items-center gap-2 px-4 py-2">
-            <CreditCard className="h-4 w-4 text-primary" />
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Total Transactions</p>
-              {isLoading ? (
-                <div className="h-5 w-16 shimmer rounded" />
-              ) : (
-                <p className="text-sm font-semibold">{totalTransactions.toLocaleString()}</p>
-              )}
+          <div className="stat-card px-5 py-3 flex items-center gap-4 min-w-[200px]">
+            <FilterIcon className="h-5 w-5 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">{filterLabel} Transactions</p>
+              <div className="flex items-center gap-3">
+                {isLoading ? (
+                  <div className="h-7 w-24 shimmer rounded" />
+                ) : (
+                  <p className="text-2xl font-bold">{displayCount.toLocaleString()}</p>
+                )}
+                <Select value={selectedFilter} onValueChange={handleFilterChange}>
+                  <SelectTrigger className="w-22 h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="success">Success</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
-
-          <div className="stat-card flex items-center gap-2 px-4 py-2">
+          {/* <div className="stat-card flex items-center gap-2 px-4 py-2">
             <TrendingUp className="h-4 w-4 text-success" />
-            {/* <div className="text-right">
+            <div className="text-right">
               <p className="text-xs text-muted-foreground">Today's Revenue</p>
               {isLoading ? (
                 <div className="h-5 w-20 shimmer rounded" />
@@ -57,8 +102,8 @@ const Navbar = ({ totalTransactions, todayRevenue, isLoading }: NavbarProps) => 
                   ₹{todayRevenue.toLocaleString()}
                 </p>
               )}
-            </div> */}
-          </div>
+            </div>
+          </div> */}
 
           <Button
             variant="ghost"

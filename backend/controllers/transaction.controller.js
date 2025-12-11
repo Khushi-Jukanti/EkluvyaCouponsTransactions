@@ -17,6 +17,7 @@ const getAllTransactions = async (req, res) => {
       page = 1,
       limit = 50,
       sort = "desc", // optional sort param
+      status,
     } = req.query;
 
     const pageNum = toInt(page, 1);
@@ -48,6 +49,11 @@ const getAllTransactions = async (req, res) => {
         $regex: `^${String(coupon).trim()}`,
         $options: "i",
       };
+    }
+
+    // THIS BLOCK: Status filtering
+    if (status && (status === "success" || status === "failed")) {
+      preMatch["payment.status"] = status === "success" ? 2 : 3;
     }
 
     // Build aggregation pipeline
@@ -122,6 +128,15 @@ const getAllTransactions = async (req, res) => {
         couponText: "$coupon_text",
         amount: "$price",
         paymentStatus: "$payment.status",
+        paymentStatusText: {
+          $switch: {
+            branches: [
+              { case: { $eq: ["$payment.status", 2] }, then: "Success" },
+              { case: { $eq: ["$payment.status", 3] }, then: "Failed" },
+            ],
+            default: "Pending",
+          },
+        },
         // date string formatted in IST (same as before)
         date_ist: {
           $dateToString: {
@@ -158,6 +173,8 @@ const getAllTransactions = async (req, res) => {
 
       return {
         ...item,
+        paymentStatus: item.paymentStatus,         // ← Add this
+        paymentStatusText: item.paymentStatusText, // ← Add this
         agentName: agent?.agentName || "No Agent",
         agentPhone: agent?.phone || "N/A",
         agentLocation: agent?.location || "N/A",

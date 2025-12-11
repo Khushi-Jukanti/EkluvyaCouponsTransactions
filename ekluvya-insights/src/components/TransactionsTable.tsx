@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/TransactionsTable.tsx
 import { Transaction } from "@/types";
 import {
@@ -126,6 +125,9 @@ const TransactionsTable = ({
               <TableHead className="text-muted-foreground font-semibold text-right">
                 Amount
               </TableHead>
+              <TableHead className="text-muted-foreground font-semibold text-center">
+                Status
+              </TableHead>
               <TableHead className="text-muted-foreground font-semibold">
                 Agent Name
               </TableHead>
@@ -151,82 +153,114 @@ const TransactionsTable = ({
                 </TableCell>
               </TableRow>
             ) : (
-              transactions.map((transaction, index) => (
-                <TableRow
-                  key={transaction.transactionId || index}
-                  className="table-row-hover border-border/30"
-                  style={{ animationDelay: `${index * 30}ms` }}
-                >
-                  <TableCell className="font-medium text-xs">
-                    {formatDate(transaction.date_ist)}
-                  </TableCell>
+              transactions.map((transaction, index) => {
+                const isFailed = transaction.paymentStatus === 3;
+                return (
+                  <TableRow
+                    key={transaction.transactionId || index}
+                    className="table-row-hover border-border/30"
+                    style={{ animationDelay: `${index * 30}ms` }}
+                  >
+                    <TableCell className="font-medium text-xs">
+                      {formatDate(transaction.date_ist)}
+                    </TableCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
-                        <User className="h-4 w-4 text-primary" />
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
+                          <User className="h-4 w-4 text-primary" />
+                        </div>
+                        <span className="font-medium">
+                          {transaction.userName}
+                        </span>
                       </div>
-                      <span className="font-medium">
-                        {transaction.userName}
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Phone className="h-3 w-3" />
+                        <span className="text-sm">{transaction.phone}</span>
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Mail className="h-3 w-3" />
+                        <span className="text-sm truncate max-w-[150px]">
+                          {transaction.email}
+                        </span>
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors font-mono"
+                        onClick={() =>
+                          onCouponClick(transaction.couponText || "")
+                        }
+                      >
+                        {transaction.couponText || "N/A"}
+                      </Badge>
+                    </TableCell>
+
+                    {/* <TableCell className="text-right">
+                      <span className="font-semibold text-success">
+                        ₹{transaction.amount.toLocaleString()}
                       </span>
-                    </div>
-                  </TableCell>
+                    </TableCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <Phone className="h-3 w-3" />
-                      <span className="text-sm">{transaction.phone}</span>
-                    </div>
-                  </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={transaction.paymentStatus === 2 ? "default" : "destructive"}
+                        className={transaction.paymentStatus === 2 ? "bg-success" : ""}
+                      >
+                        {transaction.paymentStatusText || "Unknown"}
+                      </Badge>
+                    </TableCell> */}
 
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <Mail className="h-3 w-3" />
-                      <span className="text-sm truncate max-w-[150px]">
-                        {transaction.email}
+                    {/* Amount: Red if failed, Green if success */}
+                    <TableCell className="text-right">
+                      <span
+                        className={`font-semibold ${isFailed ? "text-destructive" : "text-success"}`}
+                        title={isFailed ? "Payment Failed" : "Payment Successful"}
+                      >
+                        ₹{transaction.amount.toLocaleString("en-IN")}
                       </span>
-                    </div>
-                  </TableCell>
+                    </TableCell>
 
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors font-mono"
-                      onClick={() =>
-                        onCouponClick(transaction.couponText || "")
-                      }
-                    >
-                      {transaction.couponText || "N/A"}
-                    </Badge>
-                  </TableCell>
+                    {/* Status Badge */}
+                    <TableCell className="text-center">
+                      <Badge
+                        variant={isFailed ? "destructive" : "default"}
+                        className={isFailed ? "" : "bg-success text-success-foreground"}
+                      >
+                        {transaction.paymentStatusText || (isFailed ? "Failed" : "Success")}
+                      </Badge>
+                    </TableCell>
 
-                  <TableCell className="text-right">
-                    <span className="font-semibold text-success">
-                      ₹{transaction.amount.toLocaleString()}
-                    </span>
-                  </TableCell>
+                    <TableCell className="font-medium">
+                      {transaction.agentName}
+                    </TableCell>
 
-                  <TableCell className="font-medium">
-                    {transaction.agentName}
-                  </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Phone className="h-3 w-3" />
+                        <span className="text-sm">{transaction.agentPhone}</span>
+                      </div>
+                    </TableCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <Phone className="h-3 w-3" />
-                      <span className="text-sm">{transaction.agentPhone}</span>
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <MapPin className="h-3 w-3" />
-                      <span className="text-sm">
-                        {transaction.agentLocation}
-                      </span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    <TableCell>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <MapPin className="h-3 w-3" />
+                        <span className="text-sm">
+                          {transaction.agentLocation}
+                        </span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>

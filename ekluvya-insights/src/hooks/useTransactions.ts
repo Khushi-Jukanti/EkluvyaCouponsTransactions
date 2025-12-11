@@ -16,6 +16,7 @@ interface UseTransactionsParams {
   dateRange: DateRange;
   coupon?: string;
   sortOrder?: "asc" | "desc";
+  status?: "all" | "success" | "failed"; // ← NEW: status filter
   search?: string;
   exportAll?: boolean; // ← NEW
 }
@@ -42,6 +43,11 @@ export const fetchTransactions = async ({
   if (dateRange?.end) params.append("end", dateRange.end);
   if (coupon) params.append("coupon", coupon);
 
+  //STATUS PARAM (only if not "all")
+  if (status && status !== "all") {
+    params.append("status", status); // backend expects "success" or "failed"
+  }
+
   const response = await fetch(`${BASE_URL}/transactions?${params}`, {
     cache: "no-cache"
   });
@@ -63,6 +69,7 @@ export const useTransactions = (params: UseTransactionsParams) => {
       params.dateRange?.end,
       params.coupon,
       params.sortOrder,      // 👈 IMPORTANT: refetch on sort order change!
+      params.status,
     ],
     queryFn: () => fetchTransactions(params),
     staleTime: 0,
