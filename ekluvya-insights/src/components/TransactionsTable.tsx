@@ -151,7 +151,7 @@ const TransactionsTable = ({
 
                   {/* Compact Dropdown */}
                   <Select value={statusFilter} onValueChange={onStatusFilterChange}>
-                    <SelectTrigger className="h-8 w-20 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0 focus:ring-primary/20">
+                    <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0 focus:ring-primary/20">
                       <FilterIcon className="h-4 w-4 text-primary" />
                       <SelectValue />
                     </SelectTrigger>
