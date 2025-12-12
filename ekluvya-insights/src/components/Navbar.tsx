@@ -1,4 +1,5 @@
-import { TrendingUp, CreditCard, Moon, Sun, FilterIcon } from "lucide-react";
+// src/components/Navbar.tsx
+import { CreditCard, Moon, Sun, FilterIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -9,23 +10,23 @@ import {
 } from "@/components/ui/select";
 import { useEffect, useState } from "react";
 
-type StatusFilter = "all" | "success" | "failed";
+// type StatusFilter = "all" | "success" | "failed";
 
 interface NavbarProps {
   totalTransactions: number;
-  allTransactions: any[];
+  allTransactions: any[];        // This is the FULL filtered list when client-side mode
   isLoading?: boolean;
-  onStatusFilterChange?: (filter: StatusFilter) => void;
+  // onStatusFilterChange?: (filter: StatusFilter) => void;
 }
 
 const Navbar = ({
   totalTransactions,
   allTransactions = [],
   isLoading = false,
-  onStatusFilterChange,
- }: NavbarProps) => {
+  // onStatusFilterChange,
+}: NavbarProps) => {
   const [isDark, setIsDark] = useState(true);
-  const [selectedFilter, setSelectedFilter] = useState<StatusFilter>("all");
+  // const [selectedFilter, setSelectedFilter] = useState<StatusFilter>("all");
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -36,23 +37,14 @@ const Navbar = ({
     document.documentElement.classList.toggle("dark");
   };
 
-  const handleFilterChange = (value: StatusFilter) => {
-    setSelectedFilter(value);
-    onStatusFilterChange?.(value);
-  };
+  // const handleFilterChange = (value: StatusFilter) => {
+  //   setSelectedFilter(value);
+  //   onStatusFilterChange?.(value);
+  // };
 
-  // Count from FULL list (not just current page)
-  const successCount = allTransactions.filter(t => t.paymentStatus === 2).length;
-  const failedCount = allTransactions.filter(t => t.paymentStatus === 3).length;
-
-  const displayCount = selectedFilter === "success"
-    ? successCount
-    : selectedFilter === "failed"
-      ? failedCount
-      : totalTransactions;
-
-  const filterLabel = selectedFilter === "all" ? "Total" : selectedFilter.charAt(0).toUpperCase() + selectedFilter.slice(1);
-
+  // ALWAYS show real full counts — no matter what filter is selected
+  const realSuccessCount = allTransactions.filter(t => t.paymentStatus === 2).length;
+  const realFailedCount = allTransactions.filter(t => t.paymentStatus === 3).length;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
@@ -67,55 +59,61 @@ const Navbar = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="stat-card px-5 py-3 flex items-center gap-4 min-w-[200px]">
-            <FilterIcon className="h-5 w-5 text-primary" />
-            <div>
-              <p className="text-xs text-muted-foreground">{filterLabel} Transactions</p>
-              <div className="flex items-center gap-3">
-                {isLoading ? (
-                  <div className="h-7 w-24 shimmer rounded" />
-                ) : (
-                  <p className="text-2xl font-bold">{displayCount.toLocaleString()}</p>
-                )}
-                <Select value={selectedFilter} onValueChange={handleFilterChange}>
-                  <SelectTrigger className="w-22 h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="success">Success</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          {/* <div className="stat-card flex items-center gap-2 px-4 py-2">
-            <TrendingUp className="h-4 w-4 text-success" />
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Today's Revenue</p>
+        <div className="flex items-center gap-8">
+          {/* FIXED: Always show REAL full counts */}
+          <div className="flex items-center gap-8">
+            <div className="text-center">
+              <p className="text-muted-foreground text-xs">Total</p>
               {isLoading ? (
-                <div className="h-5 w-20 shimmer rounded" />
+                <div className="h-7 w-24 shimmer rounded mx-auto" />
               ) : (
-                <p className="text-sm font-semibold text-success">
-                  ₹{todayRevenue.toLocaleString()}
+                <p className="font-bold text-2xl text-foreground">
+                  {totalTransactions.toLocaleString()}
                 </p>
               )}
             </div>
+
+            <div className="text-center">
+              <p className="text-success text-xs">Success</p>
+              {isLoading ? (
+                <div className="h-7 w-24 shimmer rounded mx-auto" />
+              ) : (
+                <p className="font-bold text-2xl text-success">
+                  {realSuccessCount.toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            <div className="text-center">
+              <p className="text-destructive text-xs">Failed</p>
+              {isLoading ? (
+                <div className="h-7 w-24 shimmer rounded mx-auto" />
+              ) : (
+                <p className="font-bold text-2xl text-destructive">
+                  {realFailedCount.toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Filter Dropdown — only filters the table */}
+          {/* <div className="flex items-center gap-3">
+            <FilterIcon className="h-5 w-5 text-primary" />
+            <Select value={selectedFilter} onValueChange={handleFilterChange}>
+              <SelectTrigger className="w-36 h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="success">Success</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
           </div> */}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            className="ml-2"
-          >
-            {isDark ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
+          {/* Theme Toggle */}
+          <Button variant="ghost" size="icon" onClick={toggleTheme}>
+            {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
         </div>
       </div>

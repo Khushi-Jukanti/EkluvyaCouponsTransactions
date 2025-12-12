@@ -17,7 +17,16 @@ import {
   MapPin,
   ChevronUp,
   ChevronDown,
+  FilterIcon
 } from "lucide-react";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -25,6 +34,8 @@ interface TransactionsTableProps {
   onCouponClick: (code: string) => void;
   sortDirection?: "asc" | "desc";
   onToggleSort?: () => void;
+  statusFilter: "all" | "success" | "failed";
+  onStatusFilterChange: (filter: "all" | "success" | "failed") => void;
 }
 
 const TableSkeleton = () => (
@@ -73,6 +84,8 @@ const TransactionsTable = ({
   onCouponClick,
   sortDirection = "desc",
   onToggleSort,
+  statusFilter,
+  onStatusFilterChange,
 }: TransactionsTableProps) => {
   const formatDate = (dateRaw?: string | number | Date) => {
     const d = parseAnyDate(dateRaw as any);
@@ -87,7 +100,7 @@ const TransactionsTable = ({
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
               <TableHead className="text-muted-foreground font-semibold">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <span>Date & Time (IST)</span>
 
                   {/* Sort toggle button inside header */}
@@ -125,8 +138,30 @@ const TransactionsTable = ({
               <TableHead className="text-muted-foreground font-semibold text-right">
                 Amount
               </TableHead>
-              <TableHead className="text-muted-foreground font-semibold text-center">
+              {/* <TableHead className="text-muted-foreground font-semibold text-center">
                 Status
+              </TableHead> */}
+              <TableHead className="text-muted-foreground font-semibold">
+                <div className="flex items-center justify-center gap-1">
+                  {/* Filter Icon */}
+
+
+                  {/* Label */}
+                  {/* <span className="text-sm">Status</span> */}
+
+                  {/* Compact Dropdown */}
+                  <Select value={statusFilter} onValueChange={onStatusFilterChange}>
+                    <SelectTrigger className="h-8 w-20 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0 focus:ring-primary/20">
+                      <FilterIcon className="h-4 w-4 text-primary" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="success">Success</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </TableHead>
               <TableHead className="text-muted-foreground font-semibold">
                 Agent Name
