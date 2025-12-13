@@ -17,7 +17,8 @@ import {
   MapPin,
   ChevronUp,
   ChevronDown,
-  FilterIcon
+  FilterIcon,
+  Tag,
 } from "lucide-react";
 
 import {
@@ -36,6 +37,8 @@ interface TransactionsTableProps {
   onToggleSort?: () => void;
   statusFilter: "all" | "success" | "failed";
   onStatusFilterChange: (filter: "all" | "success" | "failed") => void;
+  couponFilter: "all" | "with" | "without";
+  onCouponFilterChange: (filter: "all" | "with" | "without") => void;
 }
 
 const TableSkeleton = () => (
@@ -86,6 +89,8 @@ const TransactionsTable = ({
   onToggleSort,
   statusFilter,
   onStatusFilterChange,
+  couponFilter,
+  onCouponFilterChange,
 }: TransactionsTableProps) => {
   const formatDate = (dateRaw?: string | number | Date) => {
     const d = parseAnyDate(dateRaw as any);
@@ -132,8 +137,29 @@ const TransactionsTable = ({
               <TableHead className="text-muted-foreground font-semibold">
                 Email
               </TableHead>
-              <TableHead className="text-muted-foreground font-semibold">
+              {/* <TableHead className="text-muted-foreground font-semibold">
                 Coupon Code
+              </TableHead> */}
+              <TableHead className="text-muted-foreground font-semibold">
+                <div className="flex flex-col items-center justify-center gap-1">
+                  <span className="text-sm font-medium">Coupons</span>
+
+                  <div className="flex items-center gap-1">
+                    
+
+                    <Select value={couponFilter} onValueChange={onCouponFilterChange}>
+                      <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-1 text-sm font-medium">
+                      <Tag className="h-4 w-4 text-primary" />
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="with">With Coupon</SelectItem>
+                        <SelectItem value="without">Without Coupon</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </TableHead>
               <TableHead className="text-muted-foreground font-semibold text-right">
                 Amount

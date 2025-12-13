@@ -1,5 +1,5 @@
 // src/components/Navbar.tsx
-import { CreditCard, Moon, Sun, FilterIcon } from "lucide-react";
+import { CreditCard, Moon, Sun, FilterIcon, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -43,15 +43,51 @@ const Navbar = ({
   // };
 
   // ALWAYS show real full counts — no matter what filter is selected
-  const realSuccessCount = allTransactions.filter(t => t.paymentStatus === 2).length;
-  const realFailedCount = allTransactions.filter(t => t.paymentStatus === 3).length;
+  // const realSuccessCount = allTransactions.filter(t => t.paymentStatus === 2).length;
+  // const realFailedCount = allTransactions.filter(t => t.paymentStatus === 3).length;
+
+
+
+  // Calculate counts with safe Number() conversion
+  const successCount = allTransactions.filter(t =>
+    t.paymentStatus != null && Number(t.paymentStatus) === 2
+  ).length;
+
+  const failedCount = allTransactions.filter(t =>
+    t.paymentStatus != null && Number(t.paymentStatus) === 3
+  ).length;
+
+  const hasCoupon = (t: any) => {
+    const code = t.couponText || t.coupon_code || t.coupon || "";
+    return code && code.trim() !== "" && code.toUpperCase() !== "N/A";
+  };
+
+  const withCouponCount = allTransactions.filter(hasCoupon).length;
+  const withoutCouponCount = allTransactions.length - withCouponCount;
+
+  const successWithCoupon = allTransactions.filter(t =>
+    hasCoupon(t) && t.paymentStatus != null && Number(t.paymentStatus) === 2
+  ).length;
+
+  const successWithoutCoupon = successCount - successWithCoupon;
+
+  const failedWithCoupon = allTransactions.filter(t =>
+    hasCoupon(t) && t.paymentStatus != null && Number(t.paymentStatus) === 3
+  ).length;
+
+  const failedWithoutCoupon = failedCount - failedWithCoupon;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex h-20 items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary glow-sm">
-            <span className="text-lg font-bold text-primary-foreground">E</span>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl glow-sm">
+            {/* <span className="text-lg font-bold text-primary-foreground">E</span> */}
+            <img
+              src="/favicon.png"
+              alt="Ekluvya Admin Logo"
+              className="h-16 w-16 object-contain"
+            />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight">Ekluvya Admin</h1>
@@ -71,6 +107,15 @@ const Navbar = ({
                   {totalTransactions.toLocaleString()}
                 </p>
               )}
+              <div className="mt-2 flex items-center justify-center gap-3 text-xs">
+                <span className="flex items-center gap-1 text-primary">
+                  <Tag className="h-3 w-3" />
+                  {withCouponCount.toLocaleString()}
+                </span>
+                <span className="text-muted-foreground">
+                  / {withoutCouponCount.toLocaleString()}
+                </span>
+              </div>
             </div>
 
             <div className="text-center">
@@ -79,9 +124,18 @@ const Navbar = ({
                 <div className="h-7 w-24 shimmer rounded mx-auto" />
               ) : (
                 <p className="font-bold text-2xl text-success">
-                  {realSuccessCount.toLocaleString()}
+                  {successCount.toLocaleString()}
                 </p>
               )}
+              <div className="mt-2 flex items-center justify-center gap-3 text-xs">
+                <span className="flex items-center gap-1 text-success">
+                  <Tag className="h-3 w-3" />
+                  {successWithCoupon.toLocaleString()}
+                </span>
+                <span className="text-muted-foreground">
+                  / {successWithoutCoupon.toLocaleString()}
+                </span>
+              </div>
             </div>
 
             <div className="text-center">
@@ -90,9 +144,18 @@ const Navbar = ({
                 <div className="h-7 w-24 shimmer rounded mx-auto" />
               ) : (
                 <p className="font-bold text-2xl text-destructive">
-                  {realFailedCount.toLocaleString()}
+                  {failedCount.toLocaleString()}
                 </p>
               )}
+              <div className="mt-2 flex items-center justify-center gap-3 text-xs">
+                <span className="flex items-center gap-1 text-destructive">
+                  <Tag className="h-3 w-3" />
+                  {failedWithCoupon.toLocaleString()}
+                </span>
+                <span className="text-muted-foreground">
+                  / {failedWithoutCoupon.toLocaleString()}
+                </span>
+              </div>
             </div>
           </div>
 

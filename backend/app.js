@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const transactionRoutes = require('./routes/transaction.routes');
 const couponRoutes = require('./routes/coupon.routes');
 const errorHandler = require('./middleware/errorHandler');
+// const AgentRoutes = require('./routes/agents')
 
 const app = express();
 
@@ -19,6 +20,14 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/coupons', couponRoutes);
+
+
+const AgentCouponService = require('./services/agentCoupon.service');
+
+app.get('/api/total-agents', (req, res) => {
+  const total = AgentCouponService.getTotalCoupons();
+  res.json({ success: true, totalAgents: total });
+});
 
 
 app.get('/', (req, res) => {

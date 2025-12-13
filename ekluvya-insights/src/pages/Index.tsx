@@ -1,7 +1,7 @@
 // src/pages/Index.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw } from "lucide-react";
+import { Search, Tag, RefreshCw, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -15,6 +15,7 @@ import { useCouponSearch } from "@/hooks/useCouponSearch";
 import { DateRange } from "@/types";
 import { toast } from "sonner";
 import { format, parse, parseISO, subDays } from "date-fns";
+import {BASE_URL} from "@/config/api";
 
 import {
   Popover,
@@ -55,6 +56,7 @@ const Index: React.FC = () => {
   });
 
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
+  const [couponFilter, setCouponFilter] = useState<"all" | "with" | "without">("all");
 
   const [couponPopoverOpen, setCouponPopoverOpen] = useState(false);
   const [couponSearchCode, setCouponSearchCode] = useState("");
@@ -66,6 +68,28 @@ const Index: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const [mounted, setMounted] = useState(false);
+
+  const [totalAgents, setTotalAgents] = useState(0);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+
+  // Fetch total agents count
+  useEffect(() => {
+  const fetchAgentCount = async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/total-agents/`);
+      const json = await res.json();
+      if (json.success) {
+        setTotalAgents(json.totalAgents);
+      }
+    } catch (err) {
+      console.error("Failed to load agent count");
+    } finally {
+      setAgentsLoading(false);
+    }
+  };
+
+  fetchAgentCount();
+}, []);
 
   // When true: fetch many records → client-side filtering & pagination
   // const isClientSideMode = Boolean(searchQuery.trim()) || statusFilter !== "all";
@@ -131,13 +155,17 @@ const Index: React.FC = () => {
   }, [data?.data, searchQuery]);
 
   // Base list
-  const baseList = useMemo(
-    () => (isClientSideMode ? searchedList : data?.data || []),
-    [isClientSideMode, searchedList, data?.data]
-  );
+  // const baseList = useMemo(
+  //   () => (isClientSideMode ? searchedList : data?.data || []),
+  //   [isClientSideMode, searchedList, data?.data]
+  // );
+  const baseList = searchedList;
+
 
   // Apply status filter + client sort
-  const filteredByStatusList = useMemo(() => {
+  // const filteredByStatusList = useMemo(() => {
+  //   let list = [...baseList];
+  const filteredTransactions = useMemo(() => {
     let list = [...baseList];
 
     if (statusFilter !== "all") {
@@ -145,46 +173,75 @@ const Index: React.FC = () => {
       list = list.filter((t: any) => t.paymentStatus === targetStatus);
     }
 
-    if (isClientSideMode) {
-      list.sort((a: any, b: any) => {
-        const da = parseAnyDate(
-          a.date_ist ?? a.createdDate ?? a.dateTime ?? a.createdAt
-        ).getTime();
-        const db = parseAnyDate(
-          b.date_ist ?? b.createdDate ?? b.dateTime ?? b.createdAt
-        ).getTime();
-        return sortDirection === "desc" ? db - da : da - db;
-      });
+    //   if (isClientSideMode) {
+    //     list.sort((a: any, b: any) => {
+    //       const da = parseAnyDate(
+    //         a.date_ist ?? a.createdDate ?? a.dateTime ?? a.createdAt
+    //       ).getTime();
+    //       const db = parseAnyDate(
+    //         b.date_ist ?? b.createdDate ?? b.dateTime ?? b.createdAt
+    //       ).getTime();
+    //       return sortDirection === "desc" ? db - da : da - db;
+    //     });
+    //   }
+
+    //   return list;
+    // }, [baseList, statusFilter, isClientSideMode, sortDirection]);
+
+    // // === TOTAL & PAGINATION LOGIC ===
+    // const totalFilteredCount = filteredByStatusList.length;
+
+    if (couponFilter !== "all") {
+      const hasCoupon = (t: any) => {
+        const code = t.couponText || t.coupon_code || t.coupon || "";
+        return code && code.trim() !== "" && code.toUpperCase() !== "N/A";
+      };
+      list = list.filter((t: any) =>
+        couponFilter === "with" ? hasCoupon(t) : !hasCoupon(t)
+      );
     }
 
-    return list;
-  }, [baseList, statusFilter, isClientSideMode, sortDirection]);
+    // Sort
+    list.sort((a: any, b: any) => {
+      const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
+      const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
+      return sortDirection === "desc" ? db - da : da - db;
+    });
 
-  // === TOTAL & PAGINATION LOGIC ===
-  const totalFilteredCount = filteredByStatusList.length;
+    return list;
+  }, [baseList, statusFilter, couponFilter, sortDirection]);
 
   // When in server mode (All + no search), use server-provided total
-  const totalCount = isClientSideMode ? totalFilteredCount : data?.total || 0;
-  const totalPages = isClientSideMode
-    ? Math.max(1, Math.ceil(totalFilteredCount / PAGE_SIZE))
-    : Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
+  // const totalCount = isClientSideMode ? totalFilteredCount : data?.total || 0;
+  // const totalPages = isClientSideMode
+  //   ? Math.max(1, Math.ceil(totalFilteredCount / PAGE_SIZE))
+  //   : Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
 
-  // Slice for client-side, or use server data directly
-  const displayedTransactions = isClientSideMode
-    ? filteredByStatusList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-    : data?.data || [];
+  // // Slice for client-side, or use server data directly
+  // const displayedTransactions = isClientSideMode
+  //   ? filteredByStatusList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  //   : data?.data || [];
+
+  // Pagination
+  const totalCount = filteredTransactions.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const displayedTransactions = filteredTransactions.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
 
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
-  const totalSourceCount = totalCount;
+  // const totalSourceCount = totalCount;
 
-  // For navbar accurate counts
-  const allFilteredTransactions = useMemo(() => {
-    if (isClientSideMode) {
-      return searchedList;
-    }
-    return data?.data || [];
-  }, [isClientSideMode, searchedList, data?.data]);
+  // // For navbar accurate counts
+  // const allFilteredTransactions = useMemo(() => {
+  //   if (isClientSideMode) {
+  //     return searchedList;
+  //   }
+  //   return data?.data || [];
+  // }, [isClientSideMode, searchedList, data?.data]);
+  const allFilteredTransactions = data?.data || [];
 
   const handleCouponSearch = () => {
     if (!couponSearchCode.trim()) {
@@ -255,7 +312,19 @@ const Index: React.FC = () => {
                 Search by Mobile, Name, Amount, or Agent
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
+              {/* Total Agents Count */}
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Users className="h-5 w-5 text-primary" />
+                <span className="text-large`">
+                  Total Agents:
+                  {agentsLoading ? (
+                    <span className="ml-2 inline-block h-5 w-20 shimmer rounded" />
+                  ) : (
+                    <span className="font-bold text-foreground ml-2">{totalAgents.toLocaleString()}</span>
+                  )}
+                </span>
+              </div>
               <Popover open={couponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="glow" className="gap-2">
@@ -421,7 +490,8 @@ const Index: React.FC = () => {
               </span>{" "}
               of{" "}
               <span className="font-medium text-foreground">
-                {totalSourceCount}
+                {/* {totalSourceCount} */}
+                {totalCount}
               </span>{" "}
               transactions
             </div>
@@ -437,7 +507,9 @@ const Index: React.FC = () => {
               </Button>
               <ExportButton dateRange={dateRange}
                 searchQuery={searchQuery}
-                filteredTransactions={filteredByStatusList} />
+                // filteredTransactions={filteredByStatusList} 
+                filteredTransactions={filteredTransactions}
+              />
             </div>
           </div>
 
@@ -450,6 +522,8 @@ const Index: React.FC = () => {
             onToggleSort={toggleSort}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
+            couponFilter={couponFilter}
+            onCouponFilterChange={setCouponFilter}
           />
 
           {/* Pagination - now shows correctly for All filter too */}
