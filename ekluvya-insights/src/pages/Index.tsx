@@ -435,7 +435,9 @@ const Index: React.FC = () => {
                 <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              <ExportButton dateRange={dateRange} />
+              <ExportButton dateRange={dateRange}
+                searchQuery={searchQuery}
+                filteredTransactions={filteredByStatusList} />
             </div>
           </div>
 

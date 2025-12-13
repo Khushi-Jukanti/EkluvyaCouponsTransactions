@@ -1,30 +1,26 @@
 // src/components/ExportAllButton.tsx
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useTransactions } from "@/hooks/useTransactions";
 import { DateRange } from "@/types";
 import { toast } from "sonner";
 
 interface ExportAllButtonProps {
   dateRange: DateRange;
   searchQuery?: string;
+  // Pass the FULL filtered list (not just current page)
+  filteredTransactions: any[];
 }
 
-const ExportAllButton = ({ dateRange, searchQuery = "" }: ExportAllButtonProps) => {
-  const { data, isFetching } = useTransactions({
-    page: 1,
-    limit: 10000,
-    dateRange,
-    sortOrder: "desc",
-    exportAll: true, // ← This triggers full fetch
-  });
-
-  const transactions = data?.data || [];
-  const total = data?.total || 0;
+const ExportAllButton = ({ 
+  dateRange, 
+  searchQuery = "", 
+  filteredTransactions 
+}: ExportAllButtonProps) => {
+  const total = filteredTransactions.length;
 
   const handleExport = () => {
-    if (transactions.length === 0) {
-      toast.error("No data to export");
+    if (total === 0) {
+      toast.error("No transactions to export");
       return;
     }
 
@@ -35,22 +31,29 @@ const ExportAllButton = ({ dateRange, searchQuery = "" }: ExportAllButtonProps) 
       "Email",
       "Coupon Code",
       "Amount (₹)",
+      "Status",
       "Agent Name",
       "Agent Phone",
       "Agent Location",
     ];
 
-    const rows = transactions.map((t: any) => [
-      t.date_ist || "",
-      t.userName || "",
-      t.phone || t.userPhone || "",
-      t.email || "",
-      t.couponText || t.coupon_code || "",
-      t.amount || 0,
-      t.agentName || "",
-      t.agentPhone || "",
-      t.agentLocation || t.location || "",
-    ]);
+    const rows = filteredTransactions.map((t: any) => {
+      const isFailed = t.paymentStatus != null && Number(t.paymentStatus) === 3;
+      const statusText = isFailed ? "Failed" : "Success";
+
+      return [
+        t.date_ist || "",
+        t.userName || "",
+        t.phone || t.userPhone || "",
+        t.email || "",
+        t.couponText || t.coupon_code || "",
+        t.amount || 0,
+        statusText,
+        t.agentName || "",
+        t.agentPhone || "",
+        t.agentLocation || t.location || "",
+      ];
+    });
 
     const csv = [
       headers.join(","),
@@ -63,12 +66,18 @@ const ExportAllButton = ({ dateRange, searchQuery = "" }: ExportAllButtonProps) 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `ekluvya-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+    
+    const fileDate = new Date().toISOString().slice(0, 10);
+    const fileName = searchQuery.trim()
+      ? `ekluvya-search-results-${fileDate}.csv`
+      : `ekluvya-transactions-${fileDate}.csv`;
+    
+    link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
 
     toast.success("Export Complete!", {
-      description: `${transactions.length} transactions downloaded`,
+      description: `${total} transactions downloaded`,
     });
   };
 
@@ -77,15 +86,12 @@ const ExportAllButton = ({ dateRange, searchQuery = "" }: ExportAllButtonProps) 
       variant="glow"
       size="lg"
       onClick={handleExport}
-      disabled={isFetching || total === 0}
+      disabled={total === 0}
       className="gap-3 font-semibold"
     >
       <Download className="h-5 w-5" />
-      Export All Transactions
+      {searchQuery.trim() ? "Export Results" : "Export All Transactions"}
       {total > 0 && ` (${total})`}
-      {isFetching && (
-        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-      )}
     </Button>
   );
 };

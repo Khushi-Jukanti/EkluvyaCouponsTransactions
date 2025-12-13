@@ -142,26 +142,30 @@ const TransactionsTable = ({
                 Status
               </TableHead> */}
               <TableHead className="text-muted-foreground font-semibold">
-                <div className="flex items-center justify-center gap-1">
-                  {/* Filter Icon */}
+                <TableHead className="text-muted-foreground font-semibold">
+                  <div className="flex flex-col items-center justify-center gap-1">
+                    {/* Status Label - On Top */}
+                    <span className="text-sm font-medium">Status</span>
+
+                    {/* Filter Icon + Dropdown - Below */}
+                    <div className="flex items-center gap-1">
 
 
-                  {/* Label */}
-                  {/* <span className="text-sm">Status</span> */}
+                      <Select value={statusFilter} onValueChange={onStatusFilterChange}>
 
-                  {/* Compact Dropdown */}
-                  <Select value={statusFilter} onValueChange={onStatusFilterChange}>
-                    <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0 focus:ring-primary/20">
-                      <FilterIcon className="h-4 w-4 text-primary" />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="success">Success</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                        <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0">
+                          <FilterIcon className="h-4 w-4 text-primary" />
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="success">Success</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </TableHead>
               </TableHead>
               <TableHead className="text-muted-foreground font-semibold">
                 Agent Name
