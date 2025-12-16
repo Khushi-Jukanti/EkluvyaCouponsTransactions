@@ -15,13 +15,15 @@ import { useCouponSearch } from "@/hooks/useCouponSearch";
 import { DateRange } from "@/types";
 import { toast } from "sonner";
 import { format, parse, parseISO, subDays } from "date-fns";
-import {BASE_URL} from "@/config/api";
-
+import { BASE_URL } from "@/config/api";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
+import { Plane, Briefcase, Shirt } from "lucide-react";
+
+const TOPPER_PAGE_SIZE = 10;
 
 const PAGE_SIZE = 50;
 type SortDirection = "desc" | "asc";
@@ -47,11 +49,18 @@ const parseAnyDate = (raw?: string | number | Date): Date => {
   return isNaN(d.getTime()) ? new Date(0) : d;
 };
 
+// Helper function to create November 10th date for current year
+const getNovember10thDate = (): Date => {
+  const currentYear = new Date().getFullYear();
+  return new Date(currentYear, 10, 10); // Month is 0-indexed, so 10 = November
+};
+
 const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({
-    start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+    // Set default to November 10th of current year to today
+    start: format(getNovember10thDate(), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
 
@@ -72,27 +81,49 @@ const Index: React.FC = () => {
   const [totalAgents, setTotalAgents] = useState(0);
   const [agentsLoading, setAgentsLoading] = useState(true);
 
+  const [topperModalOpen, setTopperModalOpen] = useState(false);
+  const [selectedTopperTier, setSelectedTopperTier] = useState<
+    "50" | "25" | "10" | null
+  >(null);
+
+  // New state for topper data independent of date filter
+  const [allTopperData, setAllTopperData] = useState<any[]>([]);
+
+  // Fetch all data for topper dashboard (independent of date filter)
+  useEffect(() => {
+    const fetchAllTopperData = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/transactions?limit=10000`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setAllTopperData(json.data);
+        }
+      } catch (err) {
+        console.error("Failed to load topper data");
+      }
+    };
+
+    fetchAllTopperData();
+  }, []);
+
   // Fetch total agents count
   useEffect(() => {
-  const fetchAgentCount = async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/total-agents/`);
-      const json = await res.json();
-      if (json.success) {
-        setTotalAgents(json.totalAgents);
+    const fetchAgentCount = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/total-agents/`);
+        const json = await res.json();
+        if (json.success) {
+          setTotalAgents(json.totalAgents);
+        }
+      } catch (err) {
+        console.error("Failed to load agent count");
+      } finally {
+        setAgentsLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to load agent count");
-    } finally {
-      setAgentsLoading(false);
-    }
-  };
+    };
 
-  fetchAgentCount();
-}, []);
-
-  // When true: fetch many records → client-side filtering & pagination
-  // const isClientSideMode = Boolean(searchQuery.trim()) || statusFilter !== "all";
+    fetchAgentCount();
+  }, []);
 
   const isClientSideMode = true;
 
@@ -154,17 +185,8 @@ const Index: React.FC = () => {
     });
   }, [data?.data, searchQuery]);
 
-  // Base list
-  // const baseList = useMemo(
-  //   () => (isClientSideMode ? searchedList : data?.data || []),
-  //   [isClientSideMode, searchedList, data?.data]
-  // );
   const baseList = searchedList;
 
-
-  // Apply status filter + client sort
-  // const filteredByStatusList = useMemo(() => {
-  //   let list = [...baseList];
   const filteredTransactions = useMemo(() => {
     let list = [...baseList];
 
@@ -172,24 +194,6 @@ const Index: React.FC = () => {
       const targetStatus = statusFilter === "success" ? 2 : 3;
       list = list.filter((t: any) => t.paymentStatus === targetStatus);
     }
-
-    //   if (isClientSideMode) {
-    //     list.sort((a: any, b: any) => {
-    //       const da = parseAnyDate(
-    //         a.date_ist ?? a.createdDate ?? a.dateTime ?? a.createdAt
-    //       ).getTime();
-    //       const db = parseAnyDate(
-    //         b.date_ist ?? b.createdDate ?? b.dateTime ?? b.createdAt
-    //       ).getTime();
-    //       return sortDirection === "desc" ? db - da : da - db;
-    //     });
-    //   }
-
-    //   return list;
-    // }, [baseList, statusFilter, isClientSideMode, sortDirection]);
-
-    // // === TOTAL & PAGINATION LOGIC ===
-    // const totalFilteredCount = filteredByStatusList.length;
 
     if (couponFilter !== "all") {
       const hasCoupon = (t: any) => {
@@ -211,17 +215,6 @@ const Index: React.FC = () => {
     return list;
   }, [baseList, statusFilter, couponFilter, sortDirection]);
 
-  // When in server mode (All + no search), use server-provided total
-  // const totalCount = isClientSideMode ? totalFilteredCount : data?.total || 0;
-  // const totalPages = isClientSideMode
-  //   ? Math.max(1, Math.ceil(totalFilteredCount / PAGE_SIZE))
-  //   : Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
-
-  // // Slice for client-side, or use server data directly
-  // const displayedTransactions = isClientSideMode
-  //   ? filteredByStatusList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  //   : data?.data || [];
-
   // Pagination
   const totalCount = filteredTransactions.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -232,15 +225,7 @@ const Index: React.FC = () => {
 
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
-  // const totalSourceCount = totalCount;
 
-  // // For navbar accurate counts
-  // const allFilteredTransactions = useMemo(() => {
-  //   if (isClientSideMode) {
-  //     return searchedList;
-  //   }
-  //   return data?.data || [];
-  // }, [isClientSideMode, searchedList, data?.data]);
   const allFilteredTransactions = data?.data || [];
 
   const handleCouponSearch = () => {
@@ -275,6 +260,93 @@ const Index: React.FC = () => {
     toast.error("Failed to load transactions");
   }
 
+  // Topper stats using ALL data (independent of date filter)
+  const agentStats = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        name: string;
+        mobile: string;
+        location: string;
+        count: number;
+        coupon: string;
+      }
+    >();
+
+    // Use allTopperData instead of data?.data
+    (allTopperData || []).forEach((t: any) => {
+      if (!t.agentName) return;
+      if (Number(t.amount) !== 5841) return; // coupon-only
+
+      const key = t.agentName;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          mobile: t.agentPhone || "—",
+          location: t.agentLocation || t.location || "—",
+          count: 0,
+          coupon: t.couponText || t.coupon_code || t.coupon || "—",
+        });
+      }
+
+      map.get(key)!.count += 1;
+    });
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.count - a.count
+    );
+  }, [allTopperData]); // Changed dependency to allTopperData
+
+  const agents50 = agentStats.filter(a => a.count >= 50);
+  const agents25 = agentStats.filter(
+    a => a.count >= 25 && a.count < 50
+  );
+  const agents10 = agentStats.filter(
+    a => a.count >= 10 && a.count < 25
+  );
+
+  const selectedAgents = useMemo(() => {
+    if (selectedTopperTier === "50") return agents50;
+    if (selectedTopperTier === "25") return agents25;
+    if (selectedTopperTier === "10") return agents10;
+    return [];
+  }, [selectedTopperTier, agents50, agents25, agents10]);
+
+  const [topperPage, setTopperPage] = useState(1);
+  useEffect(() => {
+    if (!topperModalOpen) {
+      setTopperPage(1);
+    }
+  }, [topperModalOpen]);
+
+  useEffect(() => {
+    setTopperPage(1);
+  }, [selectedTopperTier]);
+
+  const activeToppers =
+    selectedTopperTier === "50"
+      ? agents50
+      : selectedTopperTier === "25"
+        ? agents25
+        : agents10;
+
+  const topperTotalPages = Math.max(
+    1,
+    Math.ceil(activeToppers.length / TOPPER_PAGE_SIZE)
+  );
+
+  const paginatedToppers = activeToppers.slice(
+    (topperPage - 1) * TOPPER_PAGE_SIZE,
+    topperPage * TOPPER_PAGE_SIZE
+  );
+
+  const topperExportData = selectedAgents.map(a => ({
+    Agent: a.name,
+    Subscriptions: a.count,
+    Tier: `${selectedTopperTier}+`,
+  }));
+
   const toggleSort = () => {
     const next: SortDirection = sortDirection === "desc" ? "asc" : "desc";
     setSortDirection(next);
@@ -297,12 +369,64 @@ const Index: React.FC = () => {
         totalTransactions={data?.total || 0}
         allTransactions={allFilteredTransactions}
         isLoading={isLoading}
-      // onStatusFilterChange={setStatusFilter}
       />
 
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-6">
-          {/* Header & Coupon Search - unchanged */}
+          {/* Header & Coupon Search */}
+          <div className="glass-card rounded-xl p-6 space-y-4">
+            <h2 className="text-2xl font-bold tracking-tight">
+              🏆 Toppers Dashboard
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* 50+ */}
+              <div
+                onClick={() => {
+                  setSelectedTopperTier("50");
+                  setTopperModalOpen(true);
+                }}
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition"
+              >
+                <Plane className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents50.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
+                  Agents with 50+ Subscriptions
+                </div>
+              </div>
+
+              {/* 25+ */}
+              <div
+                onClick={() => {
+                  setSelectedTopperTier("25");
+                  setTopperModalOpen(true);
+                }}
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition"
+              >
+                <Briefcase className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents25.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
+                  Agents with 25+ Subscriptions
+                </div>
+              </div>
+
+              {/* 10+ */}
+              <div
+                onClick={() => {
+                  setSelectedTopperTier("10");
+                  setTopperModalOpen(true);
+                }}
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition"
+              >
+                <Shirt className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents10.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
+                  Agents with 10+ Subscriptions
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">
@@ -316,7 +440,7 @@ const Index: React.FC = () => {
               {/* Total Agents Count */}
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Users className="h-5 w-5 text-primary" />
-                <span className="text-large`">
+                <span className="text-large">
                   Total Agents:
                   {agentsLoading ? (
                     <span className="ml-2 inline-block h-5 w-20 shimmer rounded" />
@@ -338,7 +462,6 @@ const Index: React.FC = () => {
                   align="end"
                   className="w-[540px] p-4 glass-card-elevated border-border/50"
                 >
-                  {/* Coupon search UI remains unchanged */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-lg font-semibold flex items-center gap-2">
                       <Search className="h-5 w-5 text-primary" />
@@ -490,7 +613,6 @@ const Index: React.FC = () => {
               </span>{" "}
               of{" "}
               <span className="font-medium text-foreground">
-                {/* {totalSourceCount} */}
                 {totalCount}
               </span>{" "}
               transactions
@@ -507,7 +629,6 @@ const Index: React.FC = () => {
               </Button>
               <ExportButton dateRange={dateRange}
                 searchQuery={searchQuery}
-                // filteredTransactions={filteredByStatusList} 
                 filteredTransactions={filteredTransactions}
               />
             </div>
@@ -526,7 +647,7 @@ const Index: React.FC = () => {
             onCouponFilterChange={setCouponFilter}
           />
 
-          {/* Pagination - now shows correctly for All filter too */}
+          {/* Pagination */}
           {totalPages > 1 && (
             <Pagination
               currentPage={page}
@@ -534,11 +655,133 @@ const Index: React.FC = () => {
               onPageChange={(p) => {
                 setPage(p);
                 if (!isClientSideMode) {
-                  refetch(); // only refetch when server pagination
+                  refetch();
                 }
               }}
               isLoading={showLoading}
             />
+          )}
+
+          {topperModalOpen && (
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+              onClick={() => setTopperModalOpen(false)}
+            >
+              {/* Backdrop */}
+              <div className="absolute inset-0 bg-black/70" />
+
+              {/* Modal */}
+              <div
+                className="relative bg-card rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between p-6 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-bold">
+                      {selectedTopperTier === "50" && "Agents with 50+ Subscriptions"}
+                      {selectedTopperTier === "25" && "Agents with 25+ Subscriptions"}
+                      {selectedTopperTier === "10" && "Agents with 10+ Subscriptions"}
+                    </h2>
+
+                    <span className="px-3 py-1 rounded-full bg-white text-black text-lg font-semibold">
+                      {activeToppers.length}
+                    </span>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTopperModalOpen(false)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+
+                {/* Body */}
+                <div className="max-h-[420px] overflow-y-auto rounded-lg border border-border m-6">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 bg-background z-10">
+                      <tr className="border-b">
+                        {/* Added S.No column */}
+                        <th className="px-2 py-2 text-left font-semibold w-12">
+                          S.No
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Agent Name
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Coupon
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Mobile
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Location
+                        </th>
+                        <th className="px-2 py-2 text-right font-semibold">
+                          Subs
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {paginatedToppers.map((agent, idx) => {
+                        // Calculate actual serial number based on page
+                        const serialNumber = (topperPage - 1) * TOPPER_PAGE_SIZE + idx + 1;
+
+                        return (
+                          <tr
+                            key={idx}
+                            className="border-b last:border-0 hover:bg-muted/40 transition"
+                          >
+                            {/* S.No cell */}
+                            <td className="px-3 py-2 text-center text-muted-foreground font-medium">
+                              {serialNumber}
+                            </td>
+                            <td className="px-3 py-2 font-medium truncate max-w-[220px]">
+                              {agent.name}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-muted-foreground">
+                              {agent.coupon}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">
+                              {agent.mobile}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground truncate max-w-[200px]">
+                              {agent.location}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-primary whitespace-nowrap">
+                              {agent.count}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {paginatedToppers.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6} // Updated colSpan to 6 for new column
+                            className="text-center text-muted-foreground py-8"
+                          >
+                            No agents found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {topperTotalPages > 1 && (
+                  <div className="flex justify-center p-4 border-t border-border">
+                    <Pagination
+                      currentPage={topperPage}
+                      totalPages={topperTotalPages}
+                      onPageChange={setTopperPage}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </main>
@@ -556,5 +799,4 @@ const Index: React.FC = () => {
     </div>
   );
 };
-
 export default Index;
