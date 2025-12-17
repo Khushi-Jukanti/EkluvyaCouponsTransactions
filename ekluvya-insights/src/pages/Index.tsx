@@ -270,13 +270,32 @@ const Index: React.FC = () => {
         location: string;
         count: number;
         coupon: string;
+        uniqueTxns: Set<string>;
       }
     >();
 
-    // Use allTopperData instead of data?.data
+    const seenTransactions = new Set<string>();
+
     (allTopperData || []).forEach((t: any) => {
+      // ❌ Skip invalid agent
       if (!t.agentName) return;
-      if (Number(t.amount) !== 5841) return; // coupon-only
+
+      // ❌ Skip failed transactions
+      if (t.paymentStatus !== 2) return;
+
+      // ❌ Coupon-only filter
+      if (Number(t.amount) !== 5841) return;
+
+      // ✅ Create a unique transaction key (dedupe)
+      const txnKey =
+        t._id ||
+        t.transactionId ||
+        t.orderId ||
+        `${t.agentName}-${t.phone}-${t.date_ist}-${t.amount}`;
+
+      // ❌ Skip duplicate transaction
+      if (seenTransactions.has(txnKey)) return;
+      seenTransactions.add(txnKey);
 
       const key = t.agentName;
 
@@ -287,16 +306,23 @@ const Index: React.FC = () => {
           location: t.agentLocation || t.location || "—",
           count: 0,
           coupon: t.couponText || t.coupon_code || t.coupon || "—",
+          uniqueTxns: new Set(),
         });
       }
 
+      // ❌ Prevent duplicate count per agent
+      if (map.get(key)!.uniqueTxns.has(txnKey)) return;
+
+      map.get(key)!.uniqueTxns.add(txnKey);
       map.get(key)!.count += 1;
     });
 
-    return Array.from(map.values()).sort(
-      (a, b) => b.count - a.count
-    );
-  }, [allTopperData]); // Changed dependency to allTopperData
+    // 🔥 Return sorted list (DESC)
+    return Array.from(map.values())
+      .map(({ uniqueTxns, ...rest }) => rest)
+      .sort((a, b) => b.count - a.count);
+  }, [allTopperData]);
+
 
   const agents50 = agentStats.filter(a => a.count >= 50);
   const agents25 = agentStats.filter(
