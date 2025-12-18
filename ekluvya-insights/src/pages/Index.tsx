@@ -187,6 +187,34 @@ const Index: React.FC = () => {
 
   const baseList = searchedList;
 
+  const dedupeByUser = (transactions: any[]) => {
+    const map = new Map<string, any>();
+    for (const t of transactions) {
+      const mobile = t.phone || t.userPhone || "";
+      const email = t.email || t.userEmail || "";
+      const key = mobile || email;
+      if (!key) continue;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, t);
+      } else {
+        // keep latest transaction
+        const prevTime = new Date(
+          existing.date_ist || existing.createdAt
+        ).getTime();
+
+        const currTime = new Date(
+          t.date_ist || t.createdAt
+        ).getTime();
+
+        if (currTime > prevTime) {
+          map.set(key, t);
+        }
+      }
+    }
+    return Array.from(map.values());
+  };
+
   const filteredTransactions = useMemo(() => {
     let list = [...baseList];
 
@@ -205,14 +233,13 @@ const Index: React.FC = () => {
       );
     }
 
-    // Sort
     list.sort((a: any, b: any) => {
       const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
       const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
       return sortDirection === "desc" ? db - da : da - db;
     });
 
-    return list;
+    return dedupeByUser(list);
   }, [baseList, statusFilter, couponFilter, sortDirection]);
 
   // Pagination
@@ -503,7 +530,7 @@ const Index: React.FC = () => {
                   </div>
 
                   <div className="space-y-6">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 min-w-0">
                       <Input
                         placeholder="Enter coupon code (e.g., ARAM8893)"
                         value={couponSearchCode}
@@ -765,7 +792,7 @@ const Index: React.FC = () => {
                             <td className="px-3 py-2 text-center text-muted-foreground font-medium">
                               {serialNumber}
                             </td>
-                            <td className="px-3 py-2 font-medium truncate max-w-[220px]">
+                            <td className="px-3 py-2 font-medium truncate max-w-[180px]">
                               {agent.name}
                             </td>
                             <td className="px-3 py-2 font-mono text-muted-foreground">
@@ -774,7 +801,7 @@ const Index: React.FC = () => {
                             <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">
                               {agent.mobile}
                             </td>
-                            <td className="px-3 py-2 text-muted-foreground truncate max-w-[200px]">
+                            <td className="px-3 py-2 text-muted-foreground truncate max-w-[180px]">
                               {agent.location}
                             </td>
                             <td className="px-3 py-2 text-right font-bold text-primary whitespace-nowrap">

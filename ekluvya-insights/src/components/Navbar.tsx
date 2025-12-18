@@ -1,6 +1,7 @@
 import { Moon, Sun, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
+import { BASE_URL } from "@/config/api";
 
 interface NavbarProps {
   totalTransactions: number;
@@ -14,10 +15,39 @@ const Navbar = ({
   isLoading = false,
 }: NavbarProps) => {
   const [isDark, setIsDark] = useState(true);
+  const [completeData, setCompleteData] = useState<any[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
+
+  // Fetch ALL transactions from the beginning
+  useEffect(() => {
+    const fetchCompleteData = async () => {
+      try {
+        setDataLoading(true);
+        // Fetch ALL transactions without any date filter
+        const response = await fetch(`${BASE_URL}/transactions?limit=100000`);
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          setCompleteData(data.data);
+        } else {
+          // Fallback: If no dedicated endpoint, use the current data
+          setCompleteData(allTransactions);
+        }
+      } catch (error) {
+        console.error("Failed to fetch complete data:", error);
+        // Fallback to current data
+        setCompleteData(allTransactions);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchCompleteData();
+  }, []); // Empty dependency array - fetch only once on mount
 
   const toggleTheme = () => {
     setIsDark((prev) => !prev);
@@ -29,11 +59,11 @@ const Navbar = ({
   // -----------------------
 
   // Safe date parsing function
-  const getCreatedDate = (t: any): Date => {
+  const parseDate = (t: any): Date => {
     if (!t) return new Date(0);
 
-    // Try different date fields
-    const dateStr = t.created_at || t.createdAt || t.date_ist || t.dateTime || t.date || "";
+    // Try all possible date fields
+    const dateStr = t.date_ist || t.created_at || t.createdAt || t.dateTime || t.date || t.createdDate || "";
 
     if (!dateStr) return new Date(0);
 
@@ -42,149 +72,259 @@ const Navbar = ({
       return isNaN(dateStr.getTime()) ? new Date(0) : dateStr;
     }
 
-    // Try to parse as ISO string
-    const isoDate = new Date(dateStr);
-    if (!isNaN(isoDate.getTime())) return isoDate;
+    // If it's a number (timestamp)
+    if (typeof dateStr === 'number') {
+      const date = new Date(dateStr);
+      return isNaN(date.getTime()) ? new Date(0) : date;
+    }
 
-    // Try to parse IST format (DD-MM-YYYY HH:mm:ss)
-    const istMatch = String(dateStr).match(/(\d{1,2})-(\d{1,2})-(\d{4}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
+    const str = String(dateStr).trim();
+
+    // Try DD-MM-YYYY HH:mm:ss format (most common in your screenshot)
+    const istMatch = str.match(/(\d{1,2})-(\d{1,2})-(\d{4}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
     if (istMatch) {
       const [_, day, month, year, hour, minute, second] = istMatch;
-      // Create date in UTC and adjust for IST (+5:30)
-      const utcDate = new Date(Date.UTC(
+      // Create date - Month is 0-indexed
+      const date = new Date(
         parseInt(year),
-        parseInt(month) - 1, // Month is 0-indexed
+        parseInt(month) - 1,
         parseInt(day),
         parseInt(hour),
         parseInt(minute),
         parseInt(second)
-      ));
-
-      // Subtract 5.5 hours to convert IST to UTC
-      const istDate = new Date(utcDate.getTime() - (5.5 * 60 * 60 * 1000));
-
-      if (!isNaN(istDate.getTime())) return istDate;
+      );
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
     }
 
-    // Try simple date format (DD-MM-YYYY)
-    const simpleMatch = String(dateStr).match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
-    if (simpleMatch) {
-      const [_, day, month, year] = simpleMatch;
-      const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00Z`);
-      if (!isNaN(date.getTime())) return date;
+    // Try DD-MM-YYYY format
+    const dateMatch = str.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+    if (dateMatch) {
+      const [_, day, month, year] = dateMatch;
+      const date = new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day)
+      );
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
     }
 
-    // Return epoch as fallback
+    // Try ISO format
+    try {
+      const isoDate = new Date(str);
+      if (!isNaN(isoDate.getTime())) {
+        return isoDate;
+      }
+    } catch { }
+
+    // Return epoch for invalid dates
     return new Date(0);
   };
 
   const hasCoupon = (t: any): boolean => {
     if (!t) return false;
-    const code = t.coupon_text || t.couponText || t.coupon_code || t.coupon || "";
+    const code = t.couponText || t.coupon_text || t.coupon_code || t.coupon || t.couponCode || "";
     return code && code.trim() !== "" && code.toUpperCase() !== "N/A";
   };
 
+  // Fixed start date: November 10, 2025
+  const FIXED_START_DATE = new Date(2025, 10, 10); // November 10, 2025 (month is 0-indexed, 10 = November)
+
+  // Deduplication logic - mobile OR email
+  const dedupeTransactions = (transactions: any[]): any[] => {
+    const map = new Map<string, any>();
+
+    for (const t of transactions) {
+      const mobile = String(t.phone || t.userPhone || t.mobile || "").trim();
+      const email = String(t.email || t.userEmail || "").trim().toLowerCase();
+
+      // Use mobile if available, otherwise email
+      const key = mobile || email;
+
+      if (!key) continue; // Skip if no identifier
+
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, t);
+      } else {
+        // Keep the transaction with the latest date
+        const existingDate = parseDate(existing);
+        const currentDate = parseDate(t);
+
+        if (currentDate.getTime() > existingDate.getTime()) {
+          map.set(key, t);
+        }
+      }
+    }
+
+    return Array.from(map.values());
+  };
+
+  // Function to filter transactions from Nov 10, 2025 to today
+  const filterByDateRange = (transactions: any[]): any[] => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // End of today
+
+    return transactions.filter(t => {
+      const date = parseDate(t);
+      // Check if date is valid and within range
+      if (isNaN(date.getTime()) || date.getTime() === 0) return false;
+      return date >= FIXED_START_DATE && date <= today;
+    });
+  };
+
+  // Function to filter today's transactions
+  const filterTodayTransactions = (transactions: any[]): any[] => {
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    return transactions.filter(t => {
+      const date = parseDate(t);
+      if (isNaN(date.getTime()) || date.getTime() === 0) return false;
+      return date >= todayStart && date < todayEnd;
+    });
+  };
+
   // -----------------------
-  // ALL TIME COUNTS
+  // Process COMPLETE data (from Nov 10, 2025 to today)
   // -----------------------
   const {
-    successCount,
-    failedCount,
-    withCouponCount,
-    withoutCouponCount,
-    successWithCoupon,
-    successWithoutCoupon,
-    failedWithCoupon,
-    failedWithoutCoupon,
+    allTimeTransactions,
+    allTimeCount,
+    allTimeSuccessCount,
+    allTimeFailedCount,
+    allTimeWithCouponCount,
+    allTimeWithoutCouponCount,
+    allTimeSuccessWithCoupon,
+    allTimeSuccessWithoutCoupon,
+    allTimeFailedWithCoupon,
+    allTimeFailedWithoutCoupon,
   } = useMemo(() => {
-    // Filter out invalid transactions
-    const validTransactions = allTransactions.filter(t => {
-      const date = getCreatedDate(t);
-      return !isNaN(date.getTime()) && date.getTime() > 0;
-    });
+    if (dataLoading || completeData.length === 0) {
+      return {
+        allTimeTransactions: [],
+        allTimeCount: 0,
+        allTimeSuccessCount: 0,
+        allTimeFailedCount: 0,
+        allTimeWithCouponCount: 0,
+        allTimeWithoutCouponCount: 0,
+        allTimeSuccessWithCoupon: 0,
+        allTimeSuccessWithoutCoupon: 0,
+        allTimeFailedWithCoupon: 0,
+        allTimeFailedWithoutCoupon: 0,
+      };
+    }
 
-    const success = validTransactions.filter(
-      (t) => Number(t.paymentStatus) === 2
+    // 1. Filter by date range (Nov 10, 2025 to today)
+    const dateFiltered = filterByDateRange(completeData);
+
+    // 2. Remove duplicates
+    const uniqueTransactions = dedupeTransactions(dateFiltered);
+
+    // 3. Calculate counts
+    const success = uniqueTransactions.filter(
+      (t) => Number(t.paymentStatus) === 2 || t.paymentStatus === '2' || t.status === 'success'
     );
-    const failed = validTransactions.filter(
-      (t) => Number(t.paymentStatus) === 3
+    const failed = uniqueTransactions.filter(
+      (t) => Number(t.paymentStatus) === 3 || t.paymentStatus === '3' || t.status === 'failed'
     );
 
-    const withCoupon = validTransactions.filter(hasCoupon);
-
+    const withCoupon = uniqueTransactions.filter(hasCoupon);
     const successWithCoupon = success.filter(hasCoupon);
     const failedWithCoupon = failed.filter(hasCoupon);
 
     return {
-      successCount: success.length,
-      failedCount: failed.length,
-      withCouponCount: withCoupon.length,
-      withoutCouponCount: validTransactions.length - withCoupon.length,
-      successWithCoupon: successWithCoupon.length,
-      successWithoutCoupon: success.length - successWithCoupon.length,
-      failedWithCoupon: failedWithCoupon.length,
-      failedWithoutCoupon: failed.length - failedWithCoupon.length,
+      allTimeTransactions: uniqueTransactions,
+      allTimeCount: uniqueTransactions.length,
+      allTimeSuccessCount: success.length,
+      allTimeFailedCount: failed.length,
+      allTimeWithCouponCount: withCoupon.length,
+      allTimeWithoutCouponCount: uniqueTransactions.length - withCoupon.length,
+      allTimeSuccessWithCoupon: successWithCoupon.length,
+      allTimeSuccessWithoutCoupon: success.length - successWithCoupon.length,
+      allTimeFailedWithCoupon: failedWithCoupon.length,
+      allTimeFailedWithoutCoupon: failed.length - failedWithCoupon.length,
     };
-  }, [allTransactions]);
+  }, [completeData, dataLoading]);
 
   // -----------------------
-  // TODAY COUNTS
+  // Process TODAY's data from CURRENT filter
   // -----------------------
   const {
-    todayTotal,
-    todaySuccess,
-    todayFailed,
-    todayWithCoupon,
-    todayWithoutCoupon,
+    todayTransactions,
+    todayCount,
+    todaySuccessCount,
+    todayFailedCount,
+    todayWithCouponCount,
+    todayWithoutCouponCount,
     todaySuccessWithCoupon,
     todaySuccessWithoutCoupon,
     todayFailedWithCoupon,
     todayFailedWithoutCoupon,
   } = useMemo(() => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (allTransactions.length === 0) {
+      return {
+        todayTransactions: [],
+        todayCount: 0,
+        todaySuccessCount: 0,
+        todayFailedCount: 0,
+        todayWithCouponCount: 0,
+        todayWithoutCouponCount: 0,
+        todaySuccessWithCoupon: 0,
+        todaySuccessWithoutCoupon: 0,
+        todayFailedWithCoupon: 0,
+        todayFailedWithoutCoupon: 0,
+      };
+    }
 
-    // Filter transactions for today
-    const todayTxns = allTransactions.filter((t) => {
-      try {
-        const d = getCreatedDate(t);
-        // Check if date is valid
-        if (isNaN(d.getTime()) || d.getTime() === 0) return false;
+    // 1. Filter today's transactions from current data
+    const todayFiltered = filterTodayTransactions(allTransactions);
 
-        // Check if it's today
-        return d >= today && d < tomorrow;
-      } catch (error) {
-        console.error("Error parsing transaction date:", error, t);
-        return false;
-      }
-    });
+    // 2. Remove duplicates
+    const uniqueToday = dedupeTransactions(todayFiltered);
 
-    const success = todayTxns.filter(
-      (t) => Number(t.paymentStatus) === 2
+    // 3. Calculate counts
+    const success = uniqueToday.filter(
+      (t) => Number(t.paymentStatus) === 2 || t.paymentStatus === '2' || t.status === 'success'
     );
-    const failed = todayTxns.filter(
-      (t) => Number(t.paymentStatus) === 3
+    const failed = uniqueToday.filter(
+      (t) => Number(t.paymentStatus) === 3 || t.paymentStatus === '3' || t.status === 'failed'
     );
 
-    const withCoupon = todayTxns.filter(hasCoupon);
-
+    const withCoupon = uniqueToday.filter(hasCoupon);
     const successWithCoupon = success.filter(hasCoupon);
     const failedWithCoupon = failed.filter(hasCoupon);
 
     return {
-      todayTotal: todayTxns.length,
-      todaySuccess: success.length,
-      todayFailed: failed.length,
-      todayWithCoupon: withCoupon.length,
-      todayWithoutCoupon: todayTxns.length - withCoupon.length,
+      todayTransactions: uniqueToday,
+      todayCount: uniqueToday.length,
+      todaySuccessCount: success.length,
+      todayFailedCount: failed.length,
+      todayWithCouponCount: withCoupon.length,
+      todayWithoutCouponCount: uniqueToday.length - withCoupon.length,
       todaySuccessWithCoupon: successWithCoupon.length,
       todaySuccessWithoutCoupon: success.length - successWithCoupon.length,
       todayFailedWithCoupon: failedWithCoupon.length,
       todayFailedWithoutCoupon: failed.length - failedWithCoupon.length,
     };
   }, [allTransactions]);
+
+  // Debug: Log the counts
+  useEffect(() => {
+    if (!dataLoading) {
+      console.log("=== NAVBAR DEBUG ===");
+      console.log("Complete data count:", completeData.length);
+      console.log("All time transactions (filtered & deduped):", allTimeCount);
+      console.log("Fixed start date:", FIXED_START_DATE.toDateString());
+      console.log("Today's date:", new Date().toDateString());
+      console.log("===================");
+    }
+  }, [dataLoading, completeData.length, allTimeCount]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
@@ -218,45 +358,45 @@ const Navbar = ({
         {/* COUNTS */}
         <div className="flex items-center gap-8">
 
-          {/* ALL TIME */}
+          {/* ALL TIME COUNTS (Nov 10, 2025 to Today - Independent of filter) */}
           <div className="flex items-center gap-8">
             <CountCard
-              label="Total"
-              count={totalTransactions}
-              withCoupon={withCouponCount}
-              withoutCoupon={withoutCouponCount}
-              isLoading={isLoading}
+              label="Total (Since Nov 10)"
+              count={allTimeCount}
+              withCoupon={allTimeWithCouponCount}
+              withoutCoupon={allTimeWithoutCouponCount}
+              isLoading={dataLoading || isLoading}
             />
             <CountCard
               label="Success"
-              count={successCount}
-              withCoupon={successWithCoupon}
-              withoutCoupon={successWithoutCoupon}
-              isLoading={isLoading}
+              count={allTimeSuccessCount}
+              withCoupon={allTimeSuccessWithCoupon}
+              withoutCoupon={allTimeSuccessWithoutCoupon}
+              isLoading={dataLoading || isLoading}
               color="text-success"
             />
             <CountCard
               label="Failed"
-              count={failedCount}
-              withCoupon={failedWithCoupon}
-              withoutCoupon={failedWithoutCoupon}
-              isLoading={isLoading}
+              count={allTimeFailedCount}
+              withCoupon={allTimeFailedWithCoupon}
+              withoutCoupon={allTimeFailedWithoutCoupon}
+              isLoading={dataLoading || isLoading}
               color="text-destructive"
             />
           </div>
 
-          {/* TODAY */}
+          {/* TODAY COUNTS (Based on current filter) */}
           <div className="flex items-center gap-8 border-l border-border/40 pl-6">
             <CountCard
               label="Today Total"
-              count={todayTotal}
-              withCoupon={todayWithCoupon}
-              withoutCoupon={todayWithoutCoupon}
+              count={todayCount}
+              withCoupon={todayWithCouponCount}
+              withoutCoupon={todayWithoutCouponCount}
               isLoading={isLoading}
             />
             <CountCard
               label="Today Success"
-              count={todaySuccess}
+              count={todaySuccessCount}
               withCoupon={todaySuccessWithCoupon}
               withoutCoupon={todaySuccessWithoutCoupon}
               isLoading={isLoading}
@@ -264,7 +404,7 @@ const Navbar = ({
             />
             <CountCard
               label="Today Failed"
-              count={todayFailed}
+              count={todayFailedCount}
               withCoupon={todayFailedWithCoupon}
               withoutCoupon={todayFailedWithoutCoupon}
               isLoading={isLoading}
@@ -272,7 +412,6 @@ const Navbar = ({
             />
           </div>
 
-          {/* THEME */}
           <Button variant="ghost" size="icon" onClick={toggleTheme}>
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
