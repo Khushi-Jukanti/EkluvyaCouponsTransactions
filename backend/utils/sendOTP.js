@@ -30,13 +30,13 @@ const sendOTP = async (mobile, otp) => {
     const message = `A big hello from Ekluvya! Your OTP to start learning is ${otp}. It expires in 5 mins. Ignore if not you. Keep getting better, champ! Regards: KENEXCEL SOFTWARE PVT LTD`;
 
     // API URL - FIXED: Remove double slashes
-    const apiUrl = 'https://api.smartping.io/fe/api/v1/send';
+    const apiUrl = 'https://api.smartping.ai/fe/api/v1/send';
 
     // Request parameters
     const params = {
       username: API_USERNAME,
       password: API_PASSWORD,
-      unicode: 'false',
+      unicode: 'true',
       from: 'KENEXL',
       to: `91${mobile}`, // Add country code (India: 91)
       dltPrincipalEntityId: DLT_PRINCIPAL_ENTITY_ID,
