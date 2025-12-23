@@ -14,7 +14,24 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
-    // Add this useEffect to your Login.tsx
+    // Initialize theme to light mode by default
+    useEffect(() => {
+        // Check if there's a saved theme in localStorage
+        const savedTheme = localStorage.getItem("theme");
+
+        if (!savedTheme) {
+            // If no saved theme, set to light mode
+            localStorage.setItem("theme", "light");
+            document.documentElement.classList.remove("dark");
+        } else if (savedTheme === "dark") {
+            // If saved theme is dark, apply dark mode
+            document.documentElement.classList.add("dark");
+        } else {
+            // If saved theme is light, ensure dark mode is removed
+            document.documentElement.classList.remove("dark");
+        }
+    }, []);
+
     useEffect(() => {
         // Check if user is already logged in
         const token = localStorage.getItem("token");
@@ -128,8 +145,8 @@ const Login = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center px-4">
-            <Card className="w-full max-w-md p-8 bg-background/70 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl">
+        <div className="min-h-screen flex items-center justify-center px-4 bg-background text-foreground">
+            <Card className="w-full max-w-md p-8 bg-background/70 backdrop-blur-xl border border-border shadow-2xl rounded-2xl">
                 {/* LOGO */}
                 <div className="flex flex-col items-center mb-8">
                     <img src="/favicon.png" className="h-16 mb-3" alt="Ekluvya Logo" />
@@ -148,7 +165,7 @@ const Login = () => {
                             value={usernameOrMobile}
                             onChange={(e) => setUsernameOrMobile(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            className="h-11"
+                            className="h-11 bg-background border-input"
                         />
                     </div>
 
@@ -161,12 +178,12 @@ const Login = () => {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 onKeyPress={handleKeyPress}
-                                className="h-11 pr-10"
+                                className="h-11 pr-10 bg-background border-input"
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
                             >
                                 {showPassword ? (
                                     <EyeOff className="h-4 w-4" />
@@ -182,7 +199,7 @@ const Login = () => {
                 <Button
                     onClick={handleLogin}
                     disabled={loading || !usernameOrMobile || !password}
-                    className="mt-6 h-10 rounded-xl text-base font-semibold w-full text-white"
+                    className="mt-6 h-10 rounded-xl text-base font-semibold w-full"
                 >
                     {loading ? "Signing in..." : "Login"}
                 </Button>

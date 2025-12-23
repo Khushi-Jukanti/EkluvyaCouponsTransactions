@@ -1,5 +1,5 @@
 // components/AgentNavbar.tsx
-import { LogOut, User, RefreshCw, BanknoteIcon, Edit, X } from "lucide-react";
+import { LogOut, User, Edit, X, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
@@ -72,6 +72,7 @@ const AgentNavbar = ({ agentName, onLogoClick }: AgentNavbarProps) => {
     const [accountDialogOpen, setAccountDialogOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [hasAccountDetails, setHasAccountDetails] = useState(false);
+    const [theme, setTheme] = useState<"light" | "dark">("light");
 
     // Initialize form
     const form = useForm<AccountDetailsFormData>({
@@ -82,6 +83,36 @@ const AgentNavbar = ({ agentName, onLogoClick }: AgentNavbarProps) => {
             bank_name: "",
         },
     });
+
+    // Initialize theme from localStorage or default to light
+    useEffect(() => {
+        const savedTheme = localStorage.getItem("theme") as "light" | "dark";
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+        const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
+        setTheme(initialTheme);
+
+        // Apply theme to document
+        if (initialTheme === "dark") {
+            document.documentElement.classList.add("dark");
+        } else {
+            document.documentElement.classList.remove("dark");
+        }
+    }, []);
+
+    // Toggle theme function
+    const toggleTheme = () => {
+        const newTheme = theme === "light" ? "dark" : "light";
+        setTheme(newTheme);
+        localStorage.setItem("theme", newTheme);
+
+        // Apply theme to document
+        if (newTheme === "dark") {
+            document.documentElement.classList.add("dark");
+        } else {
+            document.documentElement.classList.remove("dark");
+        }
+    };
 
     useEffect(() => {
         // Fetch agent profile data
@@ -147,6 +178,7 @@ const AgentNavbar = ({ agentName, onLogoClick }: AgentNavbarProps) => {
             localStorage.removeItem("agentName");
             localStorage.removeItem("agentMobile");
             localStorage.removeItem("hasAccountDetails");
+            localStorage.removeItem("theme");
 
             navigate("/login");
         } catch (error) {
@@ -157,6 +189,7 @@ const AgentNavbar = ({ agentName, onLogoClick }: AgentNavbarProps) => {
             localStorage.removeItem("agentName");
             localStorage.removeItem("agentMobile");
             localStorage.removeItem("hasAccountDetails");
+            localStorage.removeItem("theme");
             navigate("/login");
         } finally {
             setLogoutLoading(false);
@@ -297,7 +330,22 @@ const AgentNavbar = ({ agentName, onLogoClick }: AgentNavbarProps) => {
                     </div>
 
                     {/* USER PROFILE AND LOGOUT */}
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        {/* Theme Toggle Button */}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 rounded-full hover:bg-primary/10 transition-colors"
+                            onClick={toggleTheme}
+                            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+                        >
+                            {theme === "light" ? (
+                                <Moon className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                            ) : (
+                                <Sun className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                            )}
+                        </Button>
+
                         {/* Account Details Dialog */}
                         <Dialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen}>
                             {/* Custom Portal Implementation */}

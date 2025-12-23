@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 
-const hash = "$2b$10$LlpeinbMo8JWqQ8hyAZzUOwQ.mrRO9jmyNgsohk1X2UW7.RDpMXci";
-const password = "Hritesh@1234";
+const hash = "$2b$10$md0lratikUR4YFSZRSPYCeEj0WgnJndgYT.2cObMf4XupwaBcTDY.";
+const password = "Hritesh@963";
 
 async function run() {
   const isMatch = await bcrypt.compare(password, hash);
