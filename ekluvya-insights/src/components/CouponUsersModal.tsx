@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCouponTransactions } from "@/hooks/useCouponSearch";
-import {BASE_URL} from "@/config/api";
+import { BASE_URL } from "@/config/api";
 
 const parseIndianDate = (dateStr: string): Date => {
   if (!dateStr) return new Date(0);
@@ -20,6 +20,15 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   couponCode: string;
 }
+
+// Helper function to create a unique key for each user transaction
+const createUserKey = (transaction: any): string => {
+  // Combine phone and name for uniqueness
+  // Use "unknown" as fallback for missing values
+  const phone = transaction.phone || "unknown";
+  const name = transaction.userName || "unknown";
+  return `${phone}-${name}`.toLowerCase();
+};
 
 const CouponUsersModal: React.FC<Props> = ({ open, onOpenChange, couponCode }) => {
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
@@ -39,39 +48,76 @@ const CouponUsersModal: React.FC<Props> = ({ open, onOpenChange, couponCode }) =
       let page = 1;
       let hasMore = true;
 
-      while (hasMore) {
-        const response = await fetch(`${BASE_URL}/coupons/${couponCode}/transactions?page=${page}&limit=50`);
-        const json = await response.json();
+      try {
+        while (hasMore) {
+          const response = await fetch(`${BASE_URL}/coupons/${couponCode}/transactions?page=${page}&limit=50`);
 
-        if (!json.success || !json.data) break;
+          if (!response.ok) {
+            throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
+          }
 
-        allData.push(...json.data);
+          const json = await response.json();
 
-        // Check if there's another page
-        hasMore = json.pagination?.page < json.pagination?.pages;
-        page++;
+          if (!json.success || !json.data) break;
+
+          allData.push(...json.data);
+
+          // Check if there's another page
+          hasMore = json.pagination?.page < json.pagination?.pages;
+          page++;
+
+          // Optional: Add a small delay to avoid overwhelming the server
+          if (hasMore) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching coupon transactions:", error);
+      } finally {
+        setIsLoadingAll(false);
       }
 
       setAllTransactions(allData);
-      setIsLoadingAll(false);
     };
 
     fetchAllPages();
   }, [open, couponCode]);
 
-  // Filter only successful + sort by date
-  const successfulTransactions = React.useMemo(() => {
-    return allTransactions
-      .filter((t: any) => t.status === 2)
-      .sort((a: any, b: any) => {
-        return parseIndianDate(b.date_ist).getTime() - parseIndianDate(a.date_ist).getTime();
-      });
+  // Process transactions: filter successful, remove duplicates, and sort
+  const processedTransactions = React.useMemo(() => {
+    // First, filter only successful transactions
+    const successful = allTransactions.filter((t: any) => t.status === 2);
+
+    // Remove duplicates based on user identifier (phone + name)
+    const uniqueUsersMap = new Map<string, any>();
+
+    successful.forEach((transaction: any) => {
+      const userKey = createUserKey(transaction);
+
+      // If we haven't seen this user before, add them to the map
+      if (!uniqueUsersMap.has(userKey)) {
+        uniqueUsersMap.set(userKey, transaction);
+      } else {
+        // If user already exists, keep the earliest transaction
+        const existing = uniqueUsersMap.get(userKey);
+        const existingDate = parseIndianDate(existing.date_ist);
+        const currentDate = parseIndianDate(transaction.date_ist);
+
+        // Keep the transaction with the earliest date
+        if (currentDate.getTime() < existingDate.getTime()) {
+          uniqueUsersMap.set(userKey, transaction);
+        }
+      }
+    });
+
+    // Convert map back to array and sort by date (newest first)
+    return Array.from(uniqueUsersMap.values()).sort((a: any, b: any) => {
+      return parseIndianDate(b.date_ist).getTime() - parseIndianDate(a.date_ist).getTime();
+    });
   }, [allTransactions]);
 
-  // Use backend's accurate totalUsed (successful only)
-  const totalUsed = allTransactions.length > 0
-    ? allTransactions[0]?.totalUsed || successfulTransactions.length
-    : 0;
+  // Use processed transactions for total count
+  const totalUsed = processedTransactions.length;
 
   if (!open) return null;
 
@@ -96,6 +142,11 @@ const CouponUsersModal: React.FC<Props> = ({ open, onOpenChange, couponCode }) =
           <div className="flex items-center gap-6">
             <div className="text-xl font-bold text-primary">
               Total Used: <span className="text-3xl">{totalUsed}</span>
+              {allTransactions.length > 0 && allTransactions[0]?.totalUsed && (
+                <span className="text-sm text-muted-foreground ml-2">
+                  (from {allTransactions[0]?.totalUsed} total transactions)
+                </span>
+              )}
             </div>
             <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
               <X className="h-5 w-5" />
@@ -124,15 +175,15 @@ const CouponUsersModal: React.FC<Props> = ({ open, onOpenChange, couponCode }) =
                     <TableCell><div className="h-4 w-24 shimmer rounded bg-muted/40 ml-auto" /></TableCell>
                   </TableRow>
                 ))
-              ) : successfulTransactions.length === 0 ? (
+              ) : processedTransactions.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
                     No successful uses found for this coupon.
                   </TableCell>
                 </TableRow>
               ) : (
-                successfulTransactions.map((t: any) => (
-                  <TableRow key={t._id} className="hover:bg-muted/50">
+                processedTransactions.map((t: any) => (
+                  <TableRow key={`${t._id}-${t.date_ist}`} className="hover:bg-muted/50">
                     <TableCell className="text-sm font-medium">
                       {t.date_ist || "—"}
                     </TableCell>

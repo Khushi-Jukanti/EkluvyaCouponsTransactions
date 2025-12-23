@@ -24,7 +24,7 @@ import {
 import { Plane, Briefcase, Shirt } from "lucide-react";
 
 const TOPPER_PAGE_SIZE = 10;
-
+const LOCATION_PAGE_SIZE = 15;
 const PAGE_SIZE = 50;
 type SortDirection = "desc" | "asc";
 
@@ -88,6 +88,11 @@ const Index: React.FC = () => {
 
   // New state for topper data independent of date filter
   const [allTopperData, setAllTopperData] = useState<any[]>([]);
+
+  const [locationPage, setLocationPage] = useState(1);
+  useEffect(() => {
+    setLocationPage(1);
+  }, [allTopperData]);
 
   // Fetch all data for topper dashboard (independent of date filter)
   useEffect(() => {
@@ -287,7 +292,56 @@ const Index: React.FC = () => {
     toast.error("Failed to load transactions");
   }
 
-  // Topper stats using ALL data (independent of date filter)
+  const locationStats = useMemo(() => {
+    const map = new Map<string, number>();
+
+    (allTopperData || []).forEach((t: any) => {
+      // ✅ Only successful transactions
+      if (t.paymentStatus !== 2) return;
+
+      // ✅ Keep same subscription filter
+      if (Number(t.amount) !== 5841) return;
+
+      // 🔥 Normalize location
+      let location =
+        t.agentLocation ||
+        t.location ||
+        "AGENTS WITHOUT LOCATION";
+
+      // Trim + uppercase
+      location = String(location).trim().toUpperCase();
+
+      // Handle N/A, NULL, EMPTY
+      if (
+        location === "" ||
+        location === "N/A" ||
+        location === "NA" ||
+        location === "NULL" ||
+        location === "UNDEFINED"
+      ) {
+        location = "AGENTS WITHOUT LOCATION";
+      }
+
+      map.set(location, (map.get(location) || 0) + 1);
+    });
+
+    // 🔥 Sort by count DESC
+    return Array.from(map.entries())
+      .map(([location, count]) => ({ location, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [allTopperData]);
+
+
+  const locationTotalPages = Math.max(
+    1,
+    Math.ceil(locationStats.length / LOCATION_PAGE_SIZE)
+  );
+
+  const paginatedLocations = locationStats.slice(
+    (locationPage - 1) * LOCATION_PAGE_SIZE,
+    locationPage * LOCATION_PAGE_SIZE
+  );
+
   const agentStats = useMemo(() => {
     const map = new Map<
       string,
@@ -297,11 +351,11 @@ const Index: React.FC = () => {
         location: string;
         count: number;
         coupon: string;
-        uniqueTxns: Set<string>;
+        uniqueUsers: Set<string>; // Track unique users instead of transactions
       }
     >();
 
-    const seenTransactions = new Set<string>();
+    const seenUsers = new Set<string>(); // Global set to track users across all agents
 
     (allTopperData || []).forEach((t: any) => {
       // ❌ Skip invalid agent
@@ -310,43 +364,55 @@ const Index: React.FC = () => {
       // ❌ Skip failed transactions
       if (t.paymentStatus !== 2) return;
 
-      // ❌ Coupon-only filter
+      // ❌ Coupon-only filter (5841 amount)
       if (Number(t.amount) !== 5841) return;
 
-      // ✅ Create a unique transaction key (dedupe)
-      const txnKey =
-        t._id ||
-        t.transactionId ||
-        t.orderId ||
-        `${t.agentName}-${t.phone}-${t.date_ist}-${t.amount}`;
+      // ✅ Get user identifier (username + mobile)
+      const userName = String(t.userName || t.name || "").trim().toLowerCase();
+      const userPhone = String(t.phone || t.userPhone || "").trim();
+      const userKey = `${userName}|${userPhone}`;
 
-      // ❌ Skip duplicate transaction
-      if (seenTransactions.has(txnKey)) return;
-      seenTransactions.add(txnKey);
+      // Skip if userKey is invalid (no user info)
+      if (!userName && !userPhone) return;
 
-      const key = t.agentName;
+      const agentKey = t.agentName.trim();
 
-      if (!map.has(key)) {
-        map.set(key, {
-          name: key,
+      if (!map.has(agentKey)) {
+        map.set(agentKey, {
+          name: agentKey,
           mobile: t.agentPhone || "—",
           location: t.agentLocation || t.location || "—",
           count: 0,
           coupon: t.couponText || t.coupon_code || t.coupon || "—",
-          uniqueTxns: new Set(),
+          uniqueUsers: new Set(),
         });
       }
 
-      // ❌ Prevent duplicate count per agent
-      if (map.get(key)!.uniqueTxns.has(txnKey)) return;
+      const agent = map.get(agentKey)!;
 
-      map.get(key)!.uniqueTxns.add(txnKey);
-      map.get(key)!.count += 1;
+      // ✅ Check if this user has already been counted for ANY agent
+      const globalUserKey = `${agentKey}:${userKey}`;
+
+      // ❌ Skip if user already counted for this specific agent
+      if (agent.uniqueUsers.has(userKey)) return;
+
+      // ❌ Skip if user has transactions with different agents? 
+      // This depends on business logic. If a user can only belong to one agent, 
+      // we should check the global seenUsers set:
+      if (seenUsers.has(userKey)) {
+        // User already counted for another agent
+        return;
+      }
+
+      // ✅ Count this user for the agent
+      agent.uniqueUsers.add(userKey);
+      seenUsers.add(userKey); // Mark user as counted globally
+      agent.count += 1;
     });
 
     // 🔥 Return sorted list (DESC)
     return Array.from(map.values())
-      .map(({ uniqueTxns, ...rest }) => rest)
+      .map(({ uniqueUsers, ...rest }) => rest)
       .sort((a, b) => b.count - a.count);
   }, [allTopperData]);
 
@@ -416,6 +482,9 @@ const Index: React.FC = () => {
   // Only show loading when actually fetching from server
   const showLoading = isFetching && !isClientSideMode;
 
+  // Check if there's a search query to show transactions
+  const hasSearchQuery = searchQuery.trim().length > 0;
+
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
       <Navbar
@@ -478,6 +547,75 @@ const Index: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* 📍 Location-wise Subscriptions */}
+          <div className="glass-card rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold">
+                📍 Subscriptions by Location
+              </h3>
+              <span className="text-sm text-muted-foreground">
+                Total Locations: {locationStats.length}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-muted sticky top-0 z-10">
+                  <tr className="border-b">
+                    <th className="px-3 py-2 text-center w-12">S.No</th>
+                    <th className="px-3 py-2 text-center">Location</th>
+                    <th className="px-3 py-2 text-center">Subscriptions</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {paginatedLocations.map((row, idx) => {
+                    const serial =
+                      (locationPage - 1) * LOCATION_PAGE_SIZE + idx + 1;
+
+                    return (
+                      <tr
+                        key={row.location}
+                        className="border-b last:border-0 hover:bg-muted/40 transition"
+                      >
+                        <td className="px-3 py-2 text-center text-muted-foreground">
+                          {serial}
+                        </td>
+                        <td className="px-3 py-2 text-center font-medium truncate max-w-[220px]">
+                          {row.location}
+                        </td>
+                        <td className="px-3 py-2 text-center font-bold text-primary">
+                          {row.count}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {paginatedLocations.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="text-center text-muted-foreground py-8"
+                      >
+                        No data found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {locationTotalPages > 1 && (
+              <div className="flex justify-center pt-4">
+                <Pagination
+                  currentPage={locationPage}
+                  totalPages={locationTotalPages}
+                  onPageChange={setLocationPage}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -630,7 +768,6 @@ const Index: React.FC = () => {
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
               <div className="flex-1 w-full">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     placeholder="Search by mobile, name, amount, agent..."
                     value={searchQuery}
@@ -641,11 +778,6 @@ const Index: React.FC = () => {
                     className="pl-11 h-12 text-base font-medium"
                   />
                 </div>
-                {searchQuery.trim() && (
-                  <div className="mt-2 text-sm text-muted-foreground">
-                    Found <span className="font-bold text-foreground">{searchedList.length}</span> matching transactions
-                  </div>
-                )}
               </div>
 
               <div className="flex items-center gap-3">
@@ -657,62 +789,68 @@ const Index: React.FC = () => {
             </div>
           </div>
 
-          {/* Showing X-Y of Z */}
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              Showing{" "}
-              <span className="font-medium text-foreground">
-                {rangeStart}-{rangeEnd}
-              </span>{" "}
-              of{" "}
-              <span className="font-medium text-foreground">
-                {totalCount}
-              </span>{" "}
-              transactions
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={isFetching}
-              >
-                <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-              <ExportButton dateRange={dateRange}
-                searchQuery={searchQuery}
-                filteredTransactions={filteredTransactions}
+          {/* Only show transactions section when there's a search query */}
+          {hasSearchQuery && (
+            <>
+              {/* Showing X-Y of Z */}
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing{" "}
+                  <span className="font-medium text-foreground">
+                    {rangeStart}-{rangeEnd}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-medium text-foreground">
+                    {totalCount}
+                  </span>{" "}
+                  transactions
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={isFetching}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                  <ExportButton
+                    dateRange={dateRange}
+                    searchQuery={searchQuery}
+                    filteredTransactions={filteredTransactions}
+                  />
+                </div>
+              </div>
+
+              {/* Table */}
+              <TransactionsTable
+                transactions={displayedTransactions}
+                isLoading={showLoading}
+                onCouponClick={handleCouponClick}
+                sortDirection={sortDirection}
+                onToggleSort={toggleSort}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                couponFilter={couponFilter}
+                onCouponFilterChange={setCouponFilter}
               />
-            </div>
-          </div>
 
-          {/* Table */}
-          <TransactionsTable
-            transactions={displayedTransactions}
-            isLoading={showLoading}
-            onCouponClick={handleCouponClick}
-            sortDirection={sortDirection}
-            onToggleSort={toggleSort}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-            couponFilter={couponFilter}
-            onCouponFilterChange={setCouponFilter}
-          />
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <Pagination
-              currentPage={page}
-              totalPages={totalPages}
-              onPageChange={(p) => {
-                setPage(p);
-                if (!isClientSideMode) {
-                  refetch();
-                }
-              }}
-              isLoading={showLoading}
-            />
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={(p) => {
+                    setPage(p);
+                    if (!isClientSideMode) {
+                      refetch();
+                    }
+                  }}
+                  isLoading={showLoading}
+                />
+              )}
+            </>
           )}
 
           {topperModalOpen && (
@@ -789,7 +927,7 @@ const Index: React.FC = () => {
                             className="border-b last:border-0 hover:bg-muted/40 transition"
                           >
                             {/* S.No cell */}
-                            <td className="px-3 py-2 text-center text-muted-foreground font-medium">
+                            <td className="px-3 py-2 text-left text-muted-foreground font-medium">
                               {serialNumber}
                             </td>
                             <td className="px-3 py-2 font-medium truncate max-w-[180px]">

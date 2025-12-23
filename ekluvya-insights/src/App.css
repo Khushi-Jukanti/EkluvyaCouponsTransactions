@@ -1,4 +1,4 @@
-#root {
+/* #root {
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
@@ -42,13 +42,8 @@
 }
 * {
   outline: none !important;
-}
+} */
 
-/* styles/responsive.css */
-
-/* ====================
-   GLOBAL RESPONSIVE UTILITIES
-   ==================== */
 
 /* Hide elements on mobile */
 .hide-mobile {
@@ -61,13 +56,19 @@
 }
 
 /* ====================
-   INDEX PAGE RESPONSIVE STYLES
+   GLOBAL RESPONSIVE STYLES
    ==================== */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
 
 /* Container adjustments */
 .container {
   padding-left: 1rem;
   padding-right: 1rem;
+  max-width: 100%;
 }
 
 /* Main layout adjustments */
@@ -76,121 +77,32 @@ main.container {
   padding-bottom: 1.5rem;
 }
 
-/* Toppers Dashboard section */
-.glass-card.rounded-xl.p-6 {
-  padding: 1rem !important;
-}
-
-/* Grid layout for topper cards */
-.grid.grid-cols-1.sm\:grid-cols-3 {
-  grid-template-columns: 1fr;
-  gap: 1rem;
-}
-
-@media (min-width: 640px) {
-  .grid.grid-cols-1.sm\:grid-cols-3 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-/* Stat card adjustments */
-.stat-card {
-  padding: 1.25rem !important;
-  min-height: 120px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.stat-card .text-3xl {
-  font-size: 1.875rem;
-  line-height: 2.25rem;
-}
-
-/* Header section with Total Agents */
-.flex.flex-col.md\:flex-row {
-  flex-direction: column;
-  gap: 1rem;
-}
-
-@media (min-width: 768px) {
-  .flex.flex-col.md\:flex-row {
-    flex-direction: row;
-    align-items: center;
-  }
-}
-
-/* Total Agents text */
-.text-large {
-  font-size: 0.875rem;
-}
-
-@media (min-width: 640px) {
-  .text-large {
-    font-size: 1rem;
-  }
-}
-
-/* Search + Date section */
-.flex.flex-col.lg\:flex-row {
-  flex-direction: column;
-  gap: 1rem;
-}
-
-@media (min-width: 1024px) {
-  .flex.flex-col.lg\:flex-row {
-    flex-direction: row;
-    align-items: center;
-  }
-}
-
-/* Date Range Picker adjustments */
-.flex.items-center.gap-3 {
-  width: 100%;
-}
-
-@media (min-width: 1024px) {
-  .flex.items-center.gap-3 {
-    width: auto;
-  }
-}
-
-/* Showing X-Y of Z section */
-.flex.items-center.justify-between {
-  flex-direction: column;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-@media (min-width: 640px) {
-  .flex.items-center.justify-between {
-    flex-direction: row;
-    align-items: center;
-  }
-}
-
-/* Pagination container */
-.Pagination {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 1rem 0;
-}
-
 /* ====================
-   NAVBAR RESPONSIVE STYLES
+   AGENT NAVBAR RESPONSIVE STYLES
    ==================== */
 
 /* Navbar container */
-.container.mx-auto.flex.h-20.items-center.justify-between.px-4 {
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
+.sticky.top-0.z-50.w-full.border-b.border-border\/40.bg-background\/80.backdrop-blur-xl {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+  padding: 0.5rem 0;
+}
+
+.container.mx-auto.flex.h-16.items-center.justify-between.px-4 {
   height: auto;
-  min-height: 5rem;
+  min-height: 4rem;
+  padding: 0.5rem 0.75rem;
   flex-wrap: wrap;
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .container.mx-auto.flex.h-16.items-center.justify-between.px-4 {
+    min-height: 4rem;
+    flex-wrap: nowrap;
+    padding: 0 1rem;
+  }
 }
 
 /* Logo section */
@@ -198,7 +110,7 @@ main.container {
   flex: 1;
   min-width: 100%;
   justify-content: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 @media (min-width: 768px) {
@@ -206,434 +118,455 @@ main.container {
     min-width: auto;
     justify-content: flex-start;
     margin-bottom: 0;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
   }
 }
 
-/* Logo image */
-.h-16.w-16 {
-  height: 3rem;
-  width: 3rem;
+/* Logo image and text */
+.h-12.w-12 {
+  height: 2.5rem;
+  width: 2.5rem;
+}
+
+.text-lg.font-bold.tracking-tight {
+  font-size: 1.125rem;
+}
+
+@media (min-width: 640px) {
+  .h-12.w-12 {
+    height: 3rem;
+    width: 3rem;
+  }
+
+  .text-lg.font-bold.tracking-tight {
+    font-size: 1.25rem;
+  }
 }
 
 @media (min-width: 768px) {
-  .h-16.w-16 {
-    height: 4rem;
-    width: 4rem;
+  .text-lg.font-bold.tracking-tight {
+    font-size: 1.5rem;
   }
 }
 
-/* Counts section */
-.flex.items-center.gap-8 {
-  flex-wrap: wrap;
-  gap: 1rem;
+/* User profile and logout section */
+.flex.items-center.gap-4 {
   width: 100%;
   justify-content: center;
+  gap: 1rem;
 }
 
 @media (min-width: 768px) {
-  .flex.items-center.gap-8 {
-    flex-wrap: nowrap;
+  .flex.items-center.gap-4 {
     width: auto;
     justify-content: flex-end;
   }
 }
 
-/* ALL TIME counts */
-.flex.items-center.gap-8:first-child {
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-@media (min-width: 640px) {
-  .flex.items-center.gap-8:first-child {
-    gap: 2rem;
-  }
-}
-
-/* TODAY counts section */
-.border-l.border-border\/40.pl-6 {
-  border-left: none !important;
-  padding-left: 0 !important;
-  border-top: 1px solid rgba(var(--border), 0.4);
-  padding-top: 1rem;
-  margin-top: 1rem;
-  width: 100%;
-}
-
-@media (min-width: 768px) {
-  .border-l.border-border\/40.pl-6 {
-    border-left: 1px solid rgba(var(--border), 0.4) !important;
-    border-top: none;
-    padding-top: 0;
-    margin-top: 0;
-    padding-left: 1.5rem !important;
-    width: auto;
-  }
-}
-
-/* Count card adjustments */
-.text-center {
-  min-width: 100px;
-}
-
-.text-center .text-2xl {
-  font-size: 1.5rem;
-  line-height: 2rem;
-}
-
-@media (min-width: 768px) {
-  .text-center .text-2xl {
-    font-size: 1.875rem;
-    line-height: 2.25rem;
-  }
-}
-
-/* Theme toggle button */
-.Button.variant-ghost.size-icon {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-}
-
-@media (min-width: 768px) {
-  .Button.variant-ghost.size-icon {
-    position: static;
-  }
-}
-
-/* ====================
-   TRANSACTIONS TABLE RESPONSIVE STYLES
-   ==================== */
-
-/* Table container */
-.glass-card.rounded-xl.overflow-hidden {
-  border-radius: 0.5rem !important;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Table adjustments */
-.Table {
-  min-width: 1200px;
-}
-
-@media (max-width: 1200px) {
-  .Table {
-    min-width: 1000px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .Table {
-    min-width: 900px;
-  }
-}
-
-/* Table header */
-.TableHeader .TableRow {
-  white-space: nowrap;
-}
-
-/* Table cells */
-.TableCell {
-  padding: 0.75rem 0.5rem;
-  font-size: 0.75rem;
-}
-
-@media (min-width: 640px) {
-  .TableCell {
-    padding: 0.75rem;
-    font-size: 0.875rem;
-  }
-}
-
-/* User name cell with icon */
+/* Account details button */
 .flex.items-center.gap-2 {
-  gap: 0.5rem;
-}
-
-.h-8.w-8 {
-  height: 1.5rem;
-  width: 1.5rem;
-  min-width: 1.5rem;
-}
-
-@media (min-width: 768px) {
-  .h-8.w-8 {
-    height: 2rem;
-    width: 2rem;
-    min-width: 2rem;
-  }
-}
-
-/* Phone and email cells */
-.flex.items-center.gap-1 {
-  gap: 0.25rem;
-}
-
-/* Coupon badge */
-.Badge {
-  font-size: 0.7rem;
-  padding: 0.125rem 0.5rem;
-  white-space: nowrap;
-}
-
-@media (min-width: 768px) {
-  .Badge {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.75rem;
-  }
-}
-
-/* Amount cell */
-.text-right {
-  font-size: 0.875rem;
-}
-
-/* Agent info cells */
-.text-sm {
+  padding: 0.375rem 0.75rem;
   font-size: 0.75rem;
 }
 
-@media (min-width: 768px) {
-  .text-sm {
+@media (min-width: 640px) {
+  .flex.items-center.gap-2 {
+    padding: 0.5rem 1rem;
     font-size: 0.875rem;
   }
 }
 
-/* Filter dropdowns */
-.SelectTrigger {
-  height: 1.75rem;
-  padding: 0 0.25rem;
-  font-size: 0.75rem;
+/* Profile dropdown button */
+.h-10.w-10.rounded-full {
+  height: 2.5rem;
+  width: 2.5rem;
 }
 
 @media (min-width: 768px) {
-  .SelectTrigger {
-    height: 2rem;
-    padding: 0 0.5rem;
-    font-size: 0.875rem;
+  .h-10.w-10.rounded-full {
+    height: 2.75rem;
+    width: 2.75rem;
   }
 }
 
-/* Status filter section */
-.flex.flex-col.items-center.justify-center.gap-1 {
-  gap: 0.125rem;
+/* Dropdown menu */
+.w-64 {
+  width: 16rem;
+  max-width: 90vw;
 }
 
 /* ====================
-   TOPPER MODAL RESPONSIVE STYLES
+   AGENT DASHBOARD RESPONSIVE STYLES
    ==================== */
 
-/* Modal container */
-.fixed.inset-0.z-\[9999\].flex.items-center.justify-center.p-4 {
-  padding: 0.5rem;
+/* Main container */
+.min-h-screen.bg-gradient-to-br {
+  min-height: 100vh;
 }
 
-/* Modal content */
-.max-w-3xl {
-  max-width: 95vw;
-  width: 95vw;
-}
-
-@media (min-width: 768px) {
-  .max-w-3xl {
-    width: 42rem;
-    max-width: 42rem;
-  }
-}
-
-/* Modal header */
-.flex.items-center.justify-between.p-6 {
+.container.mx-auto.px-4.py-8 {
   padding: 1rem;
 }
 
-@media (min-width: 768px) {
-  .flex.items-center.justify-between.p-6 {
+@media (min-width: 640px) {
+  .container.mx-auto.px-4.py-8 {
     padding: 1.5rem;
   }
 }
 
-/* Modal body with table */
-.max-h-\[420px\].overflow-y-auto.rounded-lg.border.border-border.m-6 {
-  margin: 0.75rem;
-  max-height: 50vh;
-}
-
-/* Topper table */
-table.w-full.border-collapse.text-sm {
-  font-size: 0.7rem;
-}
-
 @media (min-width: 768px) {
-  table.w-full.border-collapse.text-sm {
-    font-size: 0.875rem;
+  .container.mx-auto.px-4.py-8 {
+    padding: 2rem;
   }
 }
 
-/* Table cells in topper modal */
-.px-3.py-2 {
-  padding: 0.375rem 0.5rem;
-}
-
-@media (min-width: 768px) {
-  .px-3.py-2 {
-    padding: 0.5rem 0.75rem;
-  }
-}
-
-/* S.No column */
-.w-12 {
-  width: 2rem;
-}
-
-/* Agent name column truncation */
-.truncate.max-w-\[180px\] {
-  max-width: 100px;
-}
-
-@media (min-width: 768px) {
-  .truncate.max-w-\[180px\] {
-    max-width: 180px;
-  }
-}
-
-/* Location column truncation */
-.truncate.max-w-\[180px\]:last-child {
-  max-width: 120px;
-}
-
-@media (min-width: 768px) {
-  .truncate.max-w-\[180px\]:last-child {
-    max-width: 180px;
-  }
-}
-
-/* ====================
-   COUPON SEARCH POPOVER RESPONSIVE STYLES
-   ==================== */
-
-/* Popover content */
-.w-\[540px\] {
-  width: 90vw;
-  max-width: 540px;
+/* Welcome card */
+.p-6 {
+  padding: 1rem;
 }
 
 @media (min-width: 640px) {
-  .w-\[540px\] {
-    width: 540px;
+  .p-6 {
+    padding: 1.5rem;
   }
 }
 
-/* Input and button row */
-.flex.gap-2.min-w-0 {
+/* Welcome card layout */
+.flex.flex-col.md\:flex-row.justify-between.items-start.md\:items-center.gap-6 {
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
-@media (min-width: 640px) {
-  .flex.gap-2.min-w-0 {
+@media (min-width: 768px) {
+  .flex.flex-col.md\:flex-row.justify-between.items-start.md\:items-center.gap-6 {
     flex-direction: row;
+    align-items: center;
   }
 }
 
-/* Coupon details grid */
-.grid.grid-cols-2.gap-4 {
-  grid-template-columns: 1fr;
+/* Welcome card stats */
+.flex.items-center.gap-4 {
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 0.75rem;
 }
 
 @media (min-width: 640px) {
-  .grid.grid-cols-2.gap-4 {
-    grid-template-columns: repeat(2, 1fr);
+  .flex.items-center.gap-4 {
+    flex-wrap: nowrap;
     gap: 1rem;
   }
 }
 
-/* Agent details in coupon search */
-.grid.grid-cols-2.gap-3 {
-  grid-template-columns: 1fr;
-  gap: 0.5rem;
+/* Coupon code and total users cards */
+.bg-primary\/10.px-4.py-3,
+.bg-green-500\/10.px-4.py-3 {
+  padding: 0.75rem;
+  min-width: 120px;
 }
 
 @media (min-width: 640px) {
-  .grid.grid-cols-2.gap-3 {
+
+  .bg-primary\/10.px-4.py-3,
+  .bg-green-500\/10.px-4.py-3 {
+    padding: 1rem;
+    min-width: 140px;
+  }
+}
+
+/* Stats cards grid */
+.grid.grid-cols-1.md\:grid-cols-2.gap-4 {
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .grid.grid-cols-1.md\:grid-cols-2.gap-4 {
     grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
   }
 }
 
-/* ====================
-   EXPORT BUTTON RESPONSIVE
-   ==================== */
+/* Stats cards content */
+.h-12.w-12 {
+  height: 2.5rem;
+  width: 2.5rem;
+}
 
-.ExportButton button {
-  font-size: 0.875rem;
+@media (min-width: 640px) {
+  .h-12.w-12 {
+    height: 3rem;
+    width: 3rem;
+  }
+}
+
+/* Subscription history section header */
+.flex.flex-col.md\:flex-row.justify-between.items-start.md\:items-center.gap-4 {
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .flex.flex-col.md\:flex-row.justify-between.items-start.md\:items-center.gap-4 {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+/* Search and filter controls */
+.flex.flex-col.sm\:flex-row.gap-3 {
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .flex.flex-col.sm\:flex-row.gap-3 {
+    flex-direction: row;
+    width: auto;
+  }
+}
+
+/* Search input */
+.pl-10.w-full.sm\:w-64 {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .pl-10.w-full.sm\:w-64 {
+    width: 16rem;
+  }
+}
+
+/* Filter dropdown */
+.border.rounded-lg.px-3.py-2.text-sm {
   padding: 0.5rem 0.75rem;
-}
-
-/* ====================
-   PAGINATION RESPONSIVE
-   ==================== */
-
-/* Pagination buttons */
-.Pagination button {
-  height: 2rem;
-  width: 2rem;
   font-size: 0.875rem;
 }
 
-@media (min-width: 768px) {
-  .Pagination button {
-    height: 2.5rem;
-    width: 2.5rem;
-  }
-}
-
-/* Pagination ellipsis and page numbers */
-.Pagination span {
-  height: 2rem;
-  width: 2rem;
+/* Export CSV button */
+.flex.items-center.gap-2 {
+  padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-@media (min-width: 768px) {
-  .Pagination span {
-    height: 2.5rem;
-    width: 2.5rem;
+@media (min-width: 640px) {
+  .flex.items-center.gap-2 {
+    padding: 0.5rem 1rem;
   }
 }
 
 /* ====================
-   MISCELLANEOUS RESPONSIVE FIXES
+   TABLE RESPONSIVE STYLES
    ==================== */
 
-/* Prevent horizontal scrolling on mobile */
-html, body {
-  overflow-x: hidden;
+/* Table container */
+.overflow-x-auto {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   max-width: 100%;
 }
 
-/* Improve touch targets */
-button, 
+/* Table styles */
+table.w-full {
+  min-width: 800px;
+}
+
+@media (max-width: 1024px) {
+  table.w-full {
+    min-width: 700px;
+  }
+}
+
+@media (max-width: 768px) {
+  table.w-full {
+    min-width: 600px;
+  }
+}
+
+/* Table cells */
+.px-6.py-4 {
+  padding: 0.75rem 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .px-6.py-4 {
+    padding: 1rem;
+  }
+}
+
+/* User avatar in table */
+.h-10.w-10 {
+  height: 2.5rem;
+  width: 2.5rem;
+  min-width: 2.5rem;
+}
+
+@media (min-width: 768px) {
+  .h-10.w-10 {
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+}
+
+/* Contact info columns */
+.max-w-\[200px\] {
+  max-width: 150px;
+}
+
+@media (min-width: 768px) {
+  .max-w-\[200px\] {
+    max-width: 200px;
+  }
+}
+
+/* Badge in status column */
+.capitalize {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .capitalize {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+  }
+}
+
+/* Loading spinner */
+.inline-block.animate-spin.rounded-full.h-12.w-12 {
+  height: 3rem;
+  width: 3rem;
+}
+
+/* Empty state padding */
+.p-12 {
+  padding: 2rem;
+}
+
+@media (min-width: 640px) {
+  .p-12 {
+    padding: 3rem;
+  }
+}
+
+/* ====================
+   PAGINATION RESPONSIVE STYLES
+   ==================== */
+
+/* Pagination container */
+.flex.flex-col.sm\:flex-row.justify-between.items-center.gap-4 {
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .flex.flex-col.sm\:flex-row.justify-between.items-center.gap-4 {
+    flex-direction: row;
+  }
+}
+
+/* Pagination buttons */
+.Button.variant-outline.size-icon {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+@media (min-width: 768px) {
+  .Button.variant-outline.size-icon {
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+}
+
+/* Page input */
+.w-16 {
+  width: 4rem;
+}
+
+/* Pagination text */
+.text-sm.text-gray-600.dark\:text-gray-400 {
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .text-sm.text-gray-600.dark\:text-gray-400 {
+    text-align: left;
+  }
+}
+
+/* ====================
+   MODAL/DIALOG RESPONSIVE STYLES
+   ==================== */
+
+/* Account dialog */
+.fixed.w-\[90vw\].max-w-md.z-50 {
+  width: 90vw;
+  max-width: 28rem;
+}
+
+@media (min-width: 640px) {
+  .fixed.w-\[90vw\].max-w-md.z-50 {
+    max-width: 32rem;
+  }
+}
+
+/* Dialog content */
+.bg-background.p-6.shadow-lg.rounded-lg.border {
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .bg-background.p-6.shadow-lg.rounded-lg.border {
+    padding: 1.5rem;
+  }
+}
+
+/* Form fields spacing */
+.space-y-4 {
+  gap: 1rem;
+}
+
+/* Form buttons */
+.flex.justify-end.gap-3.pt-4 {
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .flex.justify-end.gap-3.pt-4 {
+    flex-direction: row;
+  }
+}
+
+/* Dialog close button */
+.absolute.right-4.top-4 {
+  right: 0.5rem;
+  top: 0.5rem;
+}
+
+/* ====================
+   TOUCH FRIENDLY STYLES
+   ==================== */
+
+/* Improve touch targets for mobile */
+button,
 [role="button"],
-.SelectTrigger,
+.Input,
+select,
 .Badge,
-.Pagination button {
+.Button {
   min-height: 44px;
   min-width: 44px;
 }
 
 @media (min-width: 768px) {
+
   button,
   [role="button"],
-  .SelectTrigger,
+  .Input,
+  select,
   .Badge,
-  .Pagination button {
+  .Button {
     min-height: auto;
     min-width: auto;
   }
@@ -651,7 +584,7 @@ button,
   }
 }
 
-/* Icon sizes in tables */
+/* Icon sizes */
 .lucide {
   width: 1rem;
   height: 1rem;
@@ -664,9 +597,104 @@ button,
   }
 }
 
-/* Loading shimmer */
-.shimmer {
-  min-height: 1.5rem;
+/* ====================
+   TEXT RESPONSIVE STYLES
+   ==================== */
+
+/* Headings */
+.text-2xl.font-bold {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+@media (min-width: 640px) {
+  .text-2xl.font-bold {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}
+
+.text-xl.font-bold {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+@media (min-width: 768px) {
+  .text-xl.font-bold {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+}
+
+/* Body text */
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+/* Stats numbers */
+.text-2xl.font-bold {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+@media (min-width: 768px) {
+  .text-2xl.font-bold {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}
+
+/* ====================
+   SPECIAL MOBILE FIXES
+   ==================== */
+
+/* Prevent text overflow */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Safe area insets for modern mobile devices */
+@supports (padding: max(0px)) {
+  .container.mx-auto.px-4 {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .sticky.top-0 {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Hide scrollbar on mobile but keep functionality */
+@media (max-width: 768px) {
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none;
+  }
+
+  .overflow-x-auto {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ====================
+   DARK MODE ADJUSTMENTS
+   ==================== */
+
+@media (prefers-color-scheme: dark) {
+  .bg-gray-50 {
+    background-color: rgba(31, 41, 55, 0.8);
+  }
+
+  .border-gray-200 {
+    border-color: rgba(55, 65, 81, 0.5);
+  }
 }
 
 /* ====================
@@ -677,13 +705,76 @@ button,
   .hide-print {
     display: none !important;
   }
-  
-  .Table {
+
+  table.w-full {
     min-width: 100% !important;
   }
-  
-  .glass-card {
+
+  .sticky.top-0 {
+    position: static !important;
+  }
+
+  .bg-gradient-to-br {
+    background: white !important;
+  }
+
+  .Card {
     box-shadow: none !important;
     border: 1px solid #e5e7eb !important;
+  }
+
+  .Button,
+  .Badge,
+  select,
+  input {
+    display: none !important;
+  }
+}
+
+/* ====================
+   VERY SMALL SCREENS (Below 360px)
+   ==================== */
+
+@media (max-width: 359px) {
+
+  /* Navbar adjustments */
+  .container.mx-auto.flex.h-16.items-center.justify-between.px-4 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  /* Welcome card text */
+  .text-lg.font-bold.tracking-tight {
+    font-size: 1rem;
+  }
+
+  /* Stats cards padding */
+  .px-4.py-3 {
+    padding: 0.5rem !important;
+  }
+
+  /* Table cells */
+  .px-6.py-4 {
+    padding: 0.5rem 0.25rem !important;
+  }
+
+  /* Form inputs */
+  .Input {
+    font-size: 16px !important;
+    /* Prevents iOS zoom on focus */
+  }
+}
+
+/* ====================
+   LARGE SCREENS (Above 1440px)
+   ==================== */
+
+@media (min-width: 1440px) {
+  .container {
+    max-width: 1280px;
+  }
+
+  .max-w-3xl {
+    max-width: 48rem;
   }
 }

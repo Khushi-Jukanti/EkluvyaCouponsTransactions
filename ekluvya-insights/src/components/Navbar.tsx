@@ -1,7 +1,9 @@
-import { Moon, Sun, Tag } from "lucide-react";
+import { Moon, Sun, Tag, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
 import { BASE_URL } from "@/config/api";
+import { useNavigate } from "react-router-dom";
+import api from "@/lib/api";
 
 interface NavbarProps {
   totalTransactions: number;
@@ -14,9 +16,11 @@ const Navbar = ({
   allTransactions = [],
   isLoading = false,
 }: NavbarProps) => {
+  const navigate = useNavigate();
   const [isDark, setIsDark] = useState(true);
   const [completeData, setCompleteData] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -54,8 +58,36 @@ const Navbar = ({
     document.documentElement.classList.toggle("dark");
   };
 
+  // Logout function
+  const handleLogout = async () => {
+    try {
+      setLogoutLoading(true);
+
+      // Call backend logout endpoint
+      await api.post("/auth/logout");
+
+      // Clear local storage
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("userName");
+
+      // Redirect to login page
+      navigate("/login");
+
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Even if backend fails, clear frontend and redirect
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("userName");
+      navigate("/login");
+    } finally {
+      setLogoutLoading(false);
+    }
+  };
+
   // -----------------------
-  // Helper functions
+  // Helper functions (keep existing)
   // -----------------------
 
   // Safe date parsing function
@@ -412,9 +444,32 @@ const Navbar = ({
             />
           </div>
 
-          <Button variant="ghost" size="icon" onClick={toggleTheme}>
-            {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </Button>
+          {/* THEME AND LOGOUT BUTTONS */}
+          <div className="flex items-center gap-2 border-l border-border/40 pl-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              title="Toggle theme"
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              disabled={logoutLoading}
+              title="Logout"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {logoutLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <LogOut className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </header>

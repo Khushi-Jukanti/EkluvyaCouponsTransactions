@@ -1,7 +1,7 @@
 // src/config/db.config.js
 const mongoose = require('mongoose');
 require('dotenv').config();
-require('../models/index'); // ← This line fixes everything
+require('../models/index'); 
 
 const connectDB = async () => {
   try {
@@ -15,4 +15,10 @@ const connectDB = async () => {
   }
 };
 
-module.exports = connectDB;
+const agentDB = mongoose.createConnection(process.env.AGENT_DB_URI);
+
+agentDB.on("connected", () => {
+  console.log("✅ Agent DB connected");
+});
+
+module.exports = { connectDB, agentDB };

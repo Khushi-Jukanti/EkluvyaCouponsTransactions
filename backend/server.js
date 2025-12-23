@@ -16,21 +16,27 @@
 // //   console.log(`http://localhost:${PORT}`);
 // });
 
+require("dotenv").config();
 
-// server.js
-require('dotenv').config();
-const app = require('./app');
-const connectDB = require('./config/db.config');
-const { loadAgentCoupons } = require('./utils/excelLoader.util');
-
+const app = require("./app");
+const { connectDB } = require("./config/db.config");
+const { loadAgentCoupons } = require("./utils/excelLoader.util");
+const agentAuthRoutes = require("./routes/agent.auth.routes");
+const adminAuthRoutes = require("./routes/admin.auth.routes"); 
+const agentRoutes = require("./routes/agent");
+const logoutRoutes = require("./routes/logout.routes");
+const passwordRoutes = require("./routes/password"); // Added password routes
 const PORT = process.env.PORT || 7000;
 
-// Connect to MongoDB
 connectDB();
-
-// Load Agent ↔ Coupon Map from Excel (runs once at startup)
 loadAgentCoupons();
 
+app.use("/api/auth/agent", agentAuthRoutes);   
+app.use("/api/auth/admin", adminAuthRoutes);
+app.use("/api/password", passwordRoutes); // Register password routes
+app.use("/api/logout", logoutRoutes);
+app.use("/api/agent", agentRoutes);             
+
 app.listen(PORT, () => {
-  console.log(`Ekluvya Admin Backend Running on http://localhost:${PORT}`);
+  console.log(`🚀 Ekluvya Backend running at http://localhost:${PORT}`);
 });
