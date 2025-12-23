@@ -17,13 +17,18 @@ const Navbar = ({
   isLoading = false,
 }: NavbarProps) => {
   const navigate = useNavigate();
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false); // Changed to false for light theme default
   const [completeData, setCompleteData] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [logoutLoading, setLogoutLoading] = useState(false);
 
+  // Set light theme as default on component mount
   useEffect(() => {
-    document.documentElement.classList.add("dark");
+    // Remove dark class if it exists
+    document.documentElement.classList.remove("dark");
+
+    // Optional: Add light class if your theme system supports it
+    // document.documentElement.classList.add("light");
   }, []);
 
   // Fetch ALL transactions from the beginning
@@ -54,8 +59,14 @@ const Navbar = ({
   }, []); // Empty dependency array - fetch only once on mount
 
   const toggleTheme = () => {
-    setIsDark((prev) => !prev);
-    document.documentElement.classList.toggle("dark");
+    const newIsDark = !isDark;
+    setIsDark(newIsDark);
+
+    if (newIsDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   };
 
   // Logout function
@@ -364,7 +375,7 @@ const Navbar = ({
 
         {/* LOGO */}
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl glow-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
             <a
               href="#"
               onClick={(e) => {
@@ -405,7 +416,7 @@ const Navbar = ({
               withCoupon={allTimeSuccessWithCoupon}
               withoutCoupon={allTimeSuccessWithoutCoupon}
               isLoading={dataLoading || isLoading}
-              color="text-success"
+              color="text-green-600 dark:text-green-400"
             />
             <CountCard
               label="Failed"
@@ -413,7 +424,7 @@ const Navbar = ({
               withCoupon={allTimeFailedWithCoupon}
               withoutCoupon={allTimeFailedWithoutCoupon}
               isLoading={dataLoading || isLoading}
-              color="text-destructive"
+              color="text-red-600 dark:text-red-400"
             />
           </div>
 
@@ -432,7 +443,7 @@ const Navbar = ({
               withCoupon={todaySuccessWithCoupon}
               withoutCoupon={todaySuccessWithoutCoupon}
               isLoading={isLoading}
-              color="text-success"
+              color="text-green-600 dark:text-green-400"
             />
             <CountCard
               label="Today Failed"
@@ -440,7 +451,7 @@ const Navbar = ({
               withCoupon={todayFailedWithCoupon}
               withoutCoupon={todayFailedWithoutCoupon}
               isLoading={isLoading}
-              color="text-destructive"
+              color="text-red-600 dark:text-red-400"
             />
           </div>
 
@@ -450,7 +461,7 @@ const Navbar = ({
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              title="Toggle theme"
+              title={isDark ? "Switch to light theme" : "Switch to dark theme"}
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
@@ -461,7 +472,7 @@ const Navbar = ({
               onClick={handleLogout}
               disabled={logoutLoading}
               title="Logout"
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30"
             >
               {logoutLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -494,21 +505,21 @@ const CountCard = ({
   color,
 }: CountCardProps) => (
   <div className="text-center">
-    <p className={`text-xs ${color || "text-muted-foreground"}`}>{label}</p>
+    <p className={`text-xs ${color || "text-gray-600 dark:text-gray-400"}`}>{label}</p>
     {isLoading ? (
       <div className="h-7 w-24 shimmer rounded mx-auto" />
     ) : (
-      <p className={`font-bold text-2xl ${color || "text-foreground"}`}>
+      <p className={`font-bold text-2xl ${color || "text-gray-900 dark:text-white"}`}>
         {count.toLocaleString()}
       </p>
     )}
     {withCoupon !== undefined && withoutCoupon !== undefined && (
       <div className="mt-2 flex items-center justify-center gap-3 text-xs">
-        <span className={`flex items-center gap-1 ${color || "text-primary"}`}>
+        <span className={`flex items-center gap-1 ${color || "text-blue-600 dark:text-blue-400"}`}>
           <Tag className="h-3 w-3" />
           {withCoupon.toLocaleString()}
         </span>
-        <span className="text-muted-foreground">
+        <span className="text-gray-500 dark:text-gray-500">
           / {withoutCoupon.toLocaleString()}
         </span>
       </div>

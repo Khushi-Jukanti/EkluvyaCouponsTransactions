@@ -307,6 +307,7 @@ router.post("/forgot-password/reset", async (req, res) => {
     const { mobile, otp, newPassword } = req.body;
 
     console.log("Reset password request for:", mobile);
+    console.log("New password (plain text):", newPassword);
 
     if (!mobile || !otp || !newPassword) {
       return res.status(400).json({
@@ -339,20 +340,27 @@ router.post("/forgot-password/reset", async (req, res) => {
       });
     }
 
-    // Hash the new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    // Update agent
-    agent.password = hashedPassword;
+    // IMPORTANT: Save the plain password and let Mongoose middleware hash it
+    console.log("Setting plain password to agent object");
+    agent.password = newPassword; // Plain password - will be hashed by pre-save hook
     agent.firstLogin = false;
     agent.forcePasswordChange = false;
     agent.otp = null;
     agent.otpExpiry = null;
 
+    // Add debug logging
+    console.log("Before save - agent.password type:", typeof agent.password);
+    console.log("Before save - password length:", agent.password.length);
+    console.log("Before save - password (first 20 chars):", agent.password.substring(0, 20));
+
     await agent.save();
 
-    console.log("Password reset successful for:", mobile);
+    console.log("After save - agent saved successfully");
+
+    // Verify the hash was created
+    const updatedAgent = await Agent.findOne({ mobile }).select('password');
+    console.log("After save - password hash length:", updatedAgent.password?.length);
+    console.log("After save - password hash (first 10 chars):", updatedAgent.password?.substring(0, 10));
 
     res.json({
       success: true,
@@ -361,6 +369,7 @@ router.post("/forgot-password/reset", async (req, res) => {
 
   } catch (err) {
     console.error("Reset password error:", err);
+    console.error("Error stack:", err.stack);
     res.status(500).json({
       success: false,
       message: "Server error while resetting password"
