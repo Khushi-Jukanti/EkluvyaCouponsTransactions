@@ -31,32 +31,33 @@ const Navbar = ({
     // document.documentElement.classList.add("light");
   }, []);
 
-  // Fetch ALL transactions from the beginning
+  // Fetch ALL transactions from the beginning OR use props
   useEffect(() => {
     const fetchCompleteData = async () => {
       try {
         setDataLoading(true);
-        // Fetch ALL transactions without any date filter
-        const response = await fetch(`${BASE_URL}/transactions?limit=100000`);
-        const data = await response.json();
-
-        if (data.success && data.data) {
-          setCompleteData(data.data);
-        } else {
-          // Fallback: If no dedicated endpoint, use the current data
+        // If we have allTransactions from props, use them
+        if (allTransactions && allTransactions.length > 0) {
           setCompleteData(allTransactions);
+        } else {
+          // Otherwise fetch from API
+          const response = await fetch(`${BASE_URL}/transactions?limit=100000`);
+          const data = await response.json();
+
+          if (data.success && data.data) {
+            setCompleteData(data.data);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch complete data:", error);
-        // Fallback to current data
-        setCompleteData(allTransactions);
+        setCompleteData([]);
       } finally {
         setDataLoading(false);
       }
     };
 
     fetchCompleteData();
-  }, []); // Empty dependency array - fetch only once on mount
+  }, [allTransactions]);
 
   const toggleTheme = () => {
     const newIsDark = !isDark;
@@ -98,7 +99,7 @@ const Navbar = ({
   };
 
   // -----------------------
-  // Helper functions (keep existing)
+  // Helper functions
   // -----------------------
 
   // Safe date parsing function
@@ -176,7 +177,7 @@ const Navbar = ({
   // Fixed start date: November 10, 2025
   const FIXED_START_DATE = new Date(2025, 10, 10); // November 10, 2025 (month is 0-indexed, 10 = November)
 
-  // Deduplication logic - mobile OR email
+  // NEW: Deduplication logic for a specific transaction list
   const dedupeTransactions = (transactions: any[]): any[] => {
     const map = new Map<string, any>();
 
@@ -219,7 +220,7 @@ const Navbar = ({
     });
   };
 
-  // Function to filter today's transactions
+  // Function to filter today's transactions - ALWAYS based on current date
   const filterTodayTransactions = (transactions: any[]): any[] => {
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -266,37 +267,49 @@ const Navbar = ({
     // 1. Filter by date range (Nov 10, 2025 to today)
     const dateFiltered = filterByDateRange(completeData);
 
-    // 2. Remove duplicates
-    const uniqueTransactions = dedupeTransactions(dateFiltered);
-
-    // 3. Calculate counts
-    const success = uniqueTransactions.filter(
-      (t) => Number(t.paymentStatus) === 2 || t.paymentStatus === '2' || t.status === 'success'
-    );
-    const failed = uniqueTransactions.filter(
-      (t) => Number(t.paymentStatus) === 3 || t.paymentStatus === '3' || t.status === 'failed'
+    // 2. Separate success and failed transactions BEFORE deduplication
+    const allSuccess = dateFiltered.filter(t =>
+      t.paymentStatus === 2 ||
+      t.paymentStatus === '2' ||
+      t.status === 'success' ||
+      t.status === 2
     );
 
+    const allFailed = dateFiltered.filter(t =>
+      t.paymentStatus === 3 ||
+      t.paymentStatus === '3' ||
+      t.status === 'failed' ||
+      t.status === 3
+    );
+
+    // 3. Deduplicate success and failed transactions SEPARATELY
+    const uniqueSuccess = dedupeTransactions(allSuccess);
+    const uniqueFailed = dedupeTransactions(allFailed);
+
+    // 4. Combine for total unique transactions
+    const uniqueTransactions = [...uniqueSuccess, ...uniqueFailed];
+
+    // 5. Calculate counts
     const withCoupon = uniqueTransactions.filter(hasCoupon);
-    const successWithCoupon = success.filter(hasCoupon);
-    const failedWithCoupon = failed.filter(hasCoupon);
+    const successWithCoupon = uniqueSuccess.filter(hasCoupon);
+    const failedWithCoupon = uniqueFailed.filter(hasCoupon);
 
     return {
       allTimeTransactions: uniqueTransactions,
       allTimeCount: uniqueTransactions.length,
-      allTimeSuccessCount: success.length,
-      allTimeFailedCount: failed.length,
+      allTimeSuccessCount: uniqueSuccess.length,
+      allTimeFailedCount: uniqueFailed.length,
       allTimeWithCouponCount: withCoupon.length,
       allTimeWithoutCouponCount: uniqueTransactions.length - withCoupon.length,
       allTimeSuccessWithCoupon: successWithCoupon.length,
-      allTimeSuccessWithoutCoupon: success.length - successWithCoupon.length,
+      allTimeSuccessWithoutCoupon: uniqueSuccess.length - successWithCoupon.length,
       allTimeFailedWithCoupon: failedWithCoupon.length,
-      allTimeFailedWithoutCoupon: failed.length - failedWithCoupon.length,
+      allTimeFailedWithoutCoupon: uniqueFailed.length - failedWithCoupon.length,
     };
   }, [completeData, dataLoading]);
 
   // -----------------------
-  // Process TODAY's data from CURRENT filter
+  // Process TODAY's data from COMPLETE DATA (not filtered data)
   // -----------------------
   const {
     todayTransactions,
@@ -310,7 +323,7 @@ const Navbar = ({
     todayFailedWithCoupon,
     todayFailedWithoutCoupon,
   } = useMemo(() => {
-    if (allTransactions.length === 0) {
+    if (completeData.length === 0 || dataLoading) {
       return {
         todayTransactions: [],
         todayCount: 0,
@@ -325,37 +338,49 @@ const Navbar = ({
       };
     }
 
-    // 1. Filter today's transactions from current data
-    const todayFiltered = filterTodayTransactions(allTransactions);
+    // 1. Filter today's transactions from COMPLETE data
+    const todayFiltered = filterTodayTransactions(completeData);
 
-    // 2. Remove duplicates
-    const uniqueToday = dedupeTransactions(todayFiltered);
-
-    // 3. Calculate counts
-    const success = uniqueToday.filter(
-      (t) => Number(t.paymentStatus) === 2 || t.paymentStatus === '2' || t.status === 'success'
-    );
-    const failed = uniqueToday.filter(
-      (t) => Number(t.paymentStatus) === 3 || t.paymentStatus === '3' || t.status === 'failed'
+    // 2. Separate success and failed transactions BEFORE deduplication
+    const todaySuccess = todayFiltered.filter(t =>
+      t.paymentStatus === 2 ||
+      t.paymentStatus === '2' ||
+      t.status === 'success' ||
+      t.status === 2
     );
 
+    const todayFailed = todayFiltered.filter(t =>
+      t.paymentStatus === 3 ||
+      t.paymentStatus === '3' ||
+      t.status === 'failed' ||
+      t.status === 3
+    );
+
+    // 3. Deduplicate success and failed transactions SEPARATELY
+    const uniqueTodaySuccess = dedupeTransactions(todaySuccess);
+    const uniqueTodayFailed = dedupeTransactions(todayFailed);
+
+    // 4. Combine for total unique transactions
+    const uniqueToday = [...uniqueTodaySuccess, ...uniqueTodayFailed];
+
+    // 5. Calculate counts
     const withCoupon = uniqueToday.filter(hasCoupon);
-    const successWithCoupon = success.filter(hasCoupon);
-    const failedWithCoupon = failed.filter(hasCoupon);
+    const successWithCoupon = uniqueTodaySuccess.filter(hasCoupon);
+    const failedWithCoupon = uniqueTodayFailed.filter(hasCoupon);
 
     return {
       todayTransactions: uniqueToday,
       todayCount: uniqueToday.length,
-      todaySuccessCount: success.length,
-      todayFailedCount: failed.length,
+      todaySuccessCount: uniqueTodaySuccess.length,
+      todayFailedCount: uniqueTodayFailed.length,
       todayWithCouponCount: withCoupon.length,
       todayWithoutCouponCount: uniqueToday.length - withCoupon.length,
       todaySuccessWithCoupon: successWithCoupon.length,
-      todaySuccessWithoutCoupon: success.length - successWithCoupon.length,
+      todaySuccessWithoutCoupon: uniqueTodaySuccess.length - successWithCoupon.length,
       todayFailedWithCoupon: failedWithCoupon.length,
-      todayFailedWithoutCoupon: failed.length - failedWithCoupon.length,
+      todayFailedWithoutCoupon: uniqueTodayFailed.length - failedWithCoupon.length,
     };
-  }, [allTransactions]);
+  }, [completeData, dataLoading]);
 
   // Debug: Log the counts
   useEffect(() => {
@@ -363,11 +388,16 @@ const Navbar = ({
       console.log("=== NAVBAR DEBUG ===");
       console.log("Complete data count:", completeData.length);
       console.log("All time transactions (filtered & deduped):", allTimeCount);
+      console.log("All time success:", allTimeSuccessCount);
+      console.log("All time failed:", allTimeFailedCount);
+      console.log("Today count:", todayCount);
+      console.log("Today success:", todaySuccessCount);
+      console.log("Today failed:", todayFailedCount);
       console.log("Fixed start date:", FIXED_START_DATE.toDateString());
       console.log("Today's date:", new Date().toDateString());
       console.log("===================");
     }
-  }, [dataLoading, completeData.length, allTimeCount]);
+  }, [dataLoading, completeData.length, allTimeCount, allTimeSuccessCount, allTimeFailedCount, todayCount, todaySuccessCount, todayFailedCount]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
@@ -404,7 +434,7 @@ const Navbar = ({
           {/* ALL TIME COUNTS (Nov 10, 2025 to Today - Independent of filter) */}
           <div className="flex items-center gap-8">
             <CountCard
-              label="Total (Since Nov 10)"
+              label="Total"
               count={allTimeCount}
               withCoupon={allTimeWithCouponCount}
               withoutCoupon={allTimeWithoutCouponCount}
@@ -428,21 +458,21 @@ const Navbar = ({
             />
           </div>
 
-          {/* TODAY COUNTS (Based on current filter) */}
+          {/* TODAY COUNTS (Based on current date, not filtered data) */}
           <div className="flex items-center gap-8 border-l border-border/40 pl-6">
             <CountCard
               label="Today Total"
               count={todayCount}
               withCoupon={todayWithCouponCount}
               withoutCoupon={todayWithoutCouponCount}
-              isLoading={isLoading}
+              isLoading={dataLoading || isLoading}
             />
             <CountCard
               label="Today Success"
               count={todaySuccessCount}
               withCoupon={todaySuccessWithCoupon}
               withoutCoupon={todaySuccessWithoutCoupon}
-              isLoading={isLoading}
+              isLoading={dataLoading || isLoading}
               color="text-green-600 dark:text-green-400"
             />
             <CountCard
@@ -450,7 +480,7 @@ const Navbar = ({
               count={todayFailedCount}
               withCoupon={todayFailedWithCoupon}
               withoutCoupon={todayFailedWithoutCoupon}
-              isLoading={isLoading}
+              isLoading={dataLoading || isLoading}
               color="text-red-600 dark:text-red-400"
             />
           </div>

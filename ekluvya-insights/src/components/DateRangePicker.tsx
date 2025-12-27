@@ -59,7 +59,7 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
             {startDate ? format(startDate, "MMM d, yyyy") : "Start date"}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-[280px] p-0" align="start">
           <Calendar
             mode="single"
             selected={startDate}
@@ -85,7 +85,7 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
             {endDate ? format(endDate, "MMM d, yyyy") : "End date"}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-[280px] p-0" align="start">
           <Calendar
             mode="single"
             selected={endDate}

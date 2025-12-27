@@ -89,6 +89,9 @@ const Index: React.FC = () => {
   // New state for topper data independent of date filter
   const [allTopperData, setAllTopperData] = useState<any[]>([]);
 
+  // New state for all transactions (for Navbar)
+  const [allTransactionsData, setAllTransactionsData] = useState<any[]>([]);
+
   const [locationPage, setLocationPage] = useState(1);
   useEffect(() => {
     setLocationPage(1);
@@ -102,6 +105,7 @@ const Index: React.FC = () => {
         const json = await res.json();
         if (json.success && json.data) {
           setAllTopperData(json.data);
+          setAllTransactionsData(json.data); // Also set for Navbar
         }
       } catch (err) {
         console.error("Failed to load topper data");
@@ -396,9 +400,6 @@ const Index: React.FC = () => {
       // ❌ Skip if user already counted for this specific agent
       if (agent.uniqueUsers.has(userKey)) return;
 
-      // ❌ Skip if user has transactions with different agents? 
-      // This depends on business logic. If a user can only belong to one agent, 
-      // we should check the global seenUsers set:
       if (seenUsers.has(userKey)) {
         // User already counted for another agent
         return;
@@ -485,11 +486,16 @@ const Index: React.FC = () => {
   // Check if there's a search query to show transactions
   const hasSearchQuery = searchQuery.trim().length > 0;
 
+  // Check if date range is different from default
+  const isDefaultDateRange =
+    dateRange.start === format(getNovember10thDate(), "yyyy-MM-dd") &&
+    dateRange.end === format(new Date(), "yyyy-MM-dd");
+
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
       <Navbar
         totalTransactions={data?.total || 0}
-        allTransactions={allFilteredTransactions}
+        allTransactions={allTransactionsData}
         isLoading={isLoading}
       />
 
@@ -768,6 +774,7 @@ const Index: React.FC = () => {
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
               <div className="flex-1 w-full">
                 <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     placeholder="Search by mobile, name, amount, agent..."
                     value={searchQuery}
@@ -789,8 +796,8 @@ const Index: React.FC = () => {
             </div>
           </div>
 
-          {/* Only show transactions section when there's a search query */}
-          {hasSearchQuery && (
+          {/* Show transactions section when there's a search query OR date filter is changed */}
+          {(hasSearchQuery || !isDefaultDateRange) && (
             <>
               {/* Showing X-Y of Z */}
               <div className="flex items-center justify-between">
@@ -823,32 +830,44 @@ const Index: React.FC = () => {
                 </div>
               </div>
 
-              {/* Table */}
-              <TransactionsTable
-                transactions={displayedTransactions}
-                isLoading={showLoading}
-                onCouponClick={handleCouponClick}
-                sortDirection={sortDirection}
-                onToggleSort={toggleSort}
-                statusFilter={statusFilter}
-                onStatusFilterChange={setStatusFilter}
-                couponFilter={couponFilter}
-                onCouponFilterChange={setCouponFilter}
-              />
+              {/* Table - Show empty state if no transactions */}
+              {filteredTransactions.length > 0 ? (
+                <>
+                  <TransactionsTable
+                    transactions={displayedTransactions}
+                    isLoading={showLoading}
+                    onCouponClick={handleCouponClick}
+                    sortDirection={sortDirection}
+                    onToggleSort={toggleSort}
+                    statusFilter={statusFilter}
+                    onStatusFilterChange={setStatusFilter}
+                    couponFilter={couponFilter}
+                    onCouponFilterChange={setCouponFilter}
+                  />
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <Pagination
-                  currentPage={page}
-                  totalPages={totalPages}
-                  onPageChange={(p) => {
-                    setPage(p);
-                    if (!isClientSideMode) {
-                      refetch();
-                    }
-                  }}
-                  isLoading={showLoading}
-                />
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <Pagination
+                      currentPage={page}
+                      totalPages={totalPages}
+                      onPageChange={(p) => {
+                        setPage(p);
+                        if (!isClientSideMode) {
+                          refetch();
+                        }
+                      }}
+                      isLoading={showLoading}
+                    />
+                  )}
+                </>
+              ) : (
+                <div className="glass-card rounded-xl p-12 text-center">
+                  <div className="text-4xl mb-4">📭</div>
+                  <h3 className="text-xl font-semibold mb-2">No transactions found</h3>
+                  <p className="text-muted-foreground">
+                    Try adjusting your search query or date range
+                  </p>
+                </div>
               )}
             </>
           )}
