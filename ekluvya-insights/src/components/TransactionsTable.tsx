@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 
 interface TransactionsTableProps {
-  transactions: Transaction[];
+  transactions: (Transaction & { serialNumber?: number })[];
   isLoading: boolean;
   onCouponClick: (code: string) => void;
   sortDirection?: "asc" | "desc";
@@ -45,7 +45,7 @@ const TableSkeleton = () => (
   <>
     {Array.from({ length: 10 }).map((_, i) => (
       <TableRow key={i} className="animate-pulse">
-        {Array.from({ length: 9 }).map((_, j) => (
+        {Array.from({ length: 10 }).map((_, j) => ( // Changed to 10 for S.No column
           <TableCell key={j}>
             <div className="h-4 shimmer rounded w-full" />
           </TableCell>
@@ -104,10 +104,14 @@ const TransactionsTable = ({
         <Table>
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
+              {/* Added S.No Column */}
+              <TableHead className="text-muted-foreground font-semibold text-center w-12">
+                S.No
+              </TableHead>
+
               <TableHead className="text-muted-foreground font-semibold">
                 <div className="flex items-center gap-3">
                   <span>Date & Time (IST)</span>
-
                   {/* Sort toggle button inside header */}
                   <button
                     onClick={() => onToggleSort?.()}
@@ -137,19 +141,14 @@ const TransactionsTable = ({
               <TableHead className="text-muted-foreground font-semibold">
                 Email
               </TableHead>
-              {/* <TableHead className="text-muted-foreground font-semibold">
-                Coupon Code
-              </TableHead> */}
+
               <TableHead className="text-muted-foreground font-semibold">
                 <div className="flex flex-col items-center justify-center gap-1">
                   <span className="text-sm font-medium">Coupons</span>
-
                   <div className="flex items-center gap-1">
-                    
-
                     <Select value={couponFilter} onValueChange={onCouponFilterChange}>
                       <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-1 text-sm font-medium">
-                      <Tag className="h-4 w-4 text-primary" />
+                        <Tag className="h-4 w-4 text-primary" />
                         <SelectValue placeholder="All" />
                       </SelectTrigger>
                       <SelectContent>
@@ -161,38 +160,30 @@ const TransactionsTable = ({
                   </div>
                 </div>
               </TableHead>
+
               <TableHead className="text-muted-foreground font-semibold text-right">
                 Amount
               </TableHead>
-              {/* <TableHead className="text-muted-foreground font-semibold text-center">
-                Status
-              </TableHead> */}
+
               <TableHead className="text-muted-foreground font-semibold">
-                <TableHead className="text-muted-foreground font-semibold">
-                  <div className="flex flex-col items-center justify-center gap-1">
-                    {/* Status Label - On Top */}
-                    <span className="text-sm font-medium">Status</span>
-
-                    {/* Filter Icon + Dropdown - Below */}
-                    <div className="flex items-center gap-1">
-
-
-                      <Select value={statusFilter} onValueChange={onStatusFilterChange}>
-
-                        <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0">
-                          <FilterIcon className="h-4 w-4 text-primary" />
-                          <SelectValue placeholder="All" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All</SelectItem>
-                          <SelectItem value="success">Success</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                <div className="flex flex-col items-center justify-center gap-1">
+                  <span className="text-sm font-medium">Status</span>
+                  <div className="flex items-center gap-1">
+                    <Select value={statusFilter} onValueChange={onStatusFilterChange}>
+                      <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-2 text-sm font-medium focus:ring-0">
+                        <FilterIcon className="h-4 w-4 text-primary" />
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="success">Success</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </TableHead>
+                </div>
               </TableHead>
+
               <TableHead className="text-muted-foreground font-semibold">
                 Agent Name
               </TableHead>
@@ -210,7 +201,7 @@ const TransactionsTable = ({
               <TableSkeleton />
             ) : transactions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-32 text-center">
+                <TableCell colSpan={10} className="h-32 text-center"> {/* Changed to 10 for S.No column */}
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <User className="h-8 w-8" />
                     <p>No transactions found</p>
@@ -226,6 +217,11 @@ const TransactionsTable = ({
                     className="table-row-hover border-border/30"
                     style={{ animationDelay: `${index * 30}ms` }}
                   >
+                    {/* S.No Cell */}
+                    <TableCell className="text-center text-muted-foreground font-medium">
+                      {transaction.serialNumber || index + 1}
+                    </TableCell>
+
                     <TableCell className="font-medium text-xs">
                       {formatDate(transaction.date_ist)}
                     </TableCell>
@@ -269,22 +265,6 @@ const TransactionsTable = ({
                       </Badge>
                     </TableCell>
 
-                    {/* <TableCell className="text-right">
-                      <span className="font-semibold text-success">
-                        ₹{transaction.amount.toLocaleString()}
-                      </span>
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge
-                        variant={transaction.paymentStatus === 2 ? "default" : "destructive"}
-                        className={transaction.paymentStatus === 2 ? "bg-success" : ""}
-                      >
-                        {transaction.paymentStatusText || "Unknown"}
-                      </Badge>
-                    </TableCell> */}
-
-                    {/* Amount: Red if failed, Green if success */}
                     <TableCell className="text-right">
                       <span
                         className={`font-semibold ${isFailed ? "text-destructive" : "text-success"}`}
@@ -294,7 +274,6 @@ const TransactionsTable = ({
                       </span>
                     </TableCell>
 
-                    {/* Status Badge */}
                     <TableCell className="text-center">
                       <Badge
                         variant={isFailed ? "destructive" : "default"}

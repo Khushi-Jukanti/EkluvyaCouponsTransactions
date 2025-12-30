@@ -1,7 +1,6 @@
-// src/pages/Index.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users } from "lucide-react";
+import { Search, Tag, RefreshCw, Users, XCircle, X } from "lucide-react"; // Added X icon
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -14,7 +13,7 @@ import { useTransactions } from "@/hooks/useTransactions";
 import { useCouponSearch } from "@/hooks/useCouponSearch";
 import { DateRange } from "@/types";
 import { toast } from "sonner";
-import { format, parse, parseISO, subDays } from "date-fns";
+import { format, parse, parseISO, isAfter, isValid } from "date-fns";
 import { BASE_URL } from "@/config/api";
 import {
   Popover,
@@ -63,13 +62,14 @@ const Index: React.FC = () => {
     start: format(getNovember10thDate(), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [couponFilter, setCouponFilter] = useState<"all" | "with" | "without">("all");
 
-  const [couponPopoverOpen, setCouponPopoverOpen] = useState(false);
   const [couponSearchCode, setCouponSearchCode] = useState("");
   const [couponSearchTrigger, setCouponSearchTrigger] = useState("");
+  const [hasSearchedCoupon, setHasSearchedCoupon] = useState(false);
 
   const [couponUsersOpen, setCouponUsersOpen] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState("");
@@ -140,17 +140,10 @@ const Index: React.FC = () => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!couponPopoverOpen) {
-      setCouponSearchCode("");
-      setCouponSearchTrigger("");
-    }
-  }, [couponPopoverOpen]);
-
   // Reset to page 1 on any filter change
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, searchQuery, dateRange]);
+  }, [statusFilter, searchQuery, dateRange, couponFilter]);
 
   const { data, isLoading, error, refetch, isFetching } = useTransactions({
     page: isClientSideMode ? 1 : page,
@@ -197,39 +190,92 @@ const Index: React.FC = () => {
   const baseList = searchedList;
 
   const dedupeByUser = (transactions: any[]) => {
-    const map = new Map<string, any>();
+    console.log("🔄 Starting dedupeByUser with", transactions.length, "transactions");
+
+    // Group transactions by user
+    const userMap = new Map<string, any[]>();
+
+    // First, group all transactions by user
     for (const t of transactions) {
       const mobile = t.phone || t.userPhone || "";
       const email = t.email || t.userEmail || "";
-      const key = mobile || email;
-      if (!key) continue;
-      const existing = map.get(key);
-      if (!existing) {
-        map.set(key, t);
-      } else {
-        // keep latest transaction
-        const prevTime = new Date(
-          existing.date_ist || existing.createdAt
-        ).getTime();
+      const key = email || mobile;
 
-        const currTime = new Date(
-          t.date_ist || t.createdAt
-        ).getTime();
-
-        if (currTime > prevTime) {
-          map.set(key, t);
-        }
+      if (!key) {
+        continue; // Skip transactions without identifier
       }
+
+      if (!userMap.has(key)) {
+        userMap.set(key, []);
+      }
+      userMap.get(key)!.push(t);
     }
-    return Array.from(map.values());
+
+    console.log(`Found ${userMap.size} unique users`);
+
+    // Now, for each user, decide which transactions to keep
+    const result: any[] = [];
+
+    userMap.forEach((userTransactions, key) => {
+      // Separate success and failed transactions
+      const successTx = userTransactions.filter(t => t.paymentStatus === 2);
+      const failedTx = userTransactions.filter(t => t.paymentStatus === 3);
+      const otherTx = userTransactions.filter(t => ![2, 3].includes(t.paymentStatus));
+
+      // Always keep the latest success (if any)
+      if (successTx.length > 0) {
+        const latestSuccess = successTx.sort((a, b) => {
+          const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
+          const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
+          return db - da; // Newest first
+        })[0];
+        result.push(latestSuccess);
+      }
+
+      // Always keep the latest failed (if any)
+      if (failedTx.length > 0) {
+        const latestFailed = failedTx.sort((a, b) => {
+          const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
+          const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
+          return db - da; // Newest first
+        })[0];
+        result.push(latestFailed);
+      }
+
+      // Keep other status transactions
+      otherTx.forEach(t => result.push(t));
+
+      // Log duplicates found
+      const totalForUser = userTransactions.length;
+      const keptForUser = (successTx.length > 0 ? 1 : 0) + (failedTx.length > 0 ? 1 : 0) + otherTx.length;
+      if (totalForUser > keptForUser) {
+        console.log(`User ${key}: ${totalForUser} transactions → ${keptForUser} kept`);
+      }
+    });
+
+    // Sort final result
+    result.sort((a, b) => {
+      const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
+      const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
+      return sortDirection === "desc" ? db - da : da - db;
+    });
+
+    console.log(`✅ Dedupe complete: ${transactions.length} → ${result.length}`);
+
+    return result;
   };
 
   const filteredTransactions = useMemo(() => {
+    console.log("🔍 Starting filteredTransactions calculation");
+    console.log("Base list length:", baseList.length);
+
     let list = [...baseList];
 
     if (statusFilter !== "all") {
       const targetStatus = statusFilter === "success" ? 2 : 3;
+      const beforeFilter = list.length;
       list = list.filter((t: any) => t.paymentStatus === targetStatus);
+      console.log(`Status filter "${statusFilter}" (${targetStatus}): ${beforeFilter} → ${list.length}`);
     }
 
     if (couponFilter !== "all") {
@@ -237,28 +283,79 @@ const Index: React.FC = () => {
         const code = t.couponText || t.coupon_code || t.coupon || "";
         return code && code.trim() !== "" && code.toUpperCase() !== "N/A";
       };
+      const beforeFilter = list.length;
       list = list.filter((t: any) =>
         couponFilter === "with" ? hasCoupon(t) : !hasCoupon(t)
       );
+      console.log(`Coupon filter "${couponFilter}": ${beforeFilter} → ${list.length}`);
     }
 
+    // Sort by date
     list.sort((a: any, b: any) => {
       const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
       const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
       return sortDirection === "desc" ? db - da : da - db;
     });
 
-    return dedupeByUser(list);
+    console.log("List before dedupe:", list.length);
+
+    // ALWAYS dedupe, regardless of status filter
+    const dedupedList = dedupeByUser(list);
+    console.log("List after dedupe:", dedupedList.length);
+
+    return dedupedList;
   }, [baseList, statusFilter, couponFilter, sortDirection]);
+
+  // Also update the transactionStats to count deduped totals
+  const transactionStats = useMemo(() => {
+    console.log("📊 Calculating transaction stats");
+
+    if (!allTransactionsData || allTransactionsData.length === 0) {
+      return {
+        total: 0,
+        success: 0,
+        failed: 0
+      };
+    }
+
+    // Use the same deduplication logic for consistent counts
+    const dedupedTransactions = dedupeByUser(allTransactionsData);
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    dedupedTransactions.forEach((transaction: any) => {
+      const status = transaction.paymentStatus;
+      if (status === 2) {
+        successCount++;
+      } else if (status === 3) {
+        failedCount++;
+      }
+    });
+
+    console.log(`Transaction stats - Total: ${dedupedTransactions.length}, Success: ${successCount}, Failed: ${failedCount}`);
+
+    return {
+      total: dedupedTransactions.length, // Use deduped count for consistency
+      success: successCount,
+      failed: failedCount
+    };
+  }, [allTransactionsData]);
+
+  // FIXED: Get transactions for current page with S.No
+  const displayedTransactions = useMemo(() => {
+    const startIndex = (page - 1) * PAGE_SIZE;
+    return filteredTransactions
+      .slice(startIndex, startIndex + PAGE_SIZE)
+      .map((transaction, index) => ({
+        ...transaction,
+        serialNumber: startIndex + index + 1 // Add serial number
+      }));
+  }, [filteredTransactions, page]);
 
   // Pagination
   const totalCount = filteredTransactions.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const displayedTransactions = filteredTransactions.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
-
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
 
@@ -269,6 +366,7 @@ const Index: React.FC = () => {
       toast.error("Please enter a coupon code");
       return;
     }
+    setHasSearchedCoupon(true);
     setCouponSearchTrigger(couponSearchCode.trim().toUpperCase());
   };
 
@@ -278,8 +376,13 @@ const Index: React.FC = () => {
 
   const handleViewUsersFromSearch = (code: string) => {
     setSelectedCoupon(code);
-    setCouponPopoverOpen(false);
     setCouponUsersOpen(true);
+    // Clear search after opening modal
+    setShowCouponDropdown(false);
+    setCouponSearchCode("");
+    setHasSearchedCoupon(false);
+    setCouponSearchTrigger("");
+    setCouponModalOpen(false); // Close coupon modal
   };
 
   const handleCouponClick = (code: string) => {
@@ -295,6 +398,36 @@ const Index: React.FC = () => {
   if (error) {
     toast.error("Failed to load transactions");
   }
+
+  // Date validation function
+  const validateDateRange = (range: DateRange): boolean => {
+    const startDate = new Date(range.start);
+    const endDate = new Date(range.end);
+
+    if (!isValid(startDate) || !isValid(endDate)) {
+      setDateError("Invalid date format");
+      return false;
+    }
+
+    if (isAfter(startDate, endDate)) {
+      // setDateError("From date cannot be greater than To date");
+      return false;
+    }
+
+    setDateError(null);
+    return true;
+  };
+
+  const onDateRangeChange = (range: DateRange) => {
+    if (validateDateRange(range)) {
+      setDateRange(range);
+      setPage(1);
+      refetch();
+    } else {
+      // Don't update date range if invalid
+      toast.error(dateError || "Invalid date range");
+    }
+  };
 
   const locationStats = useMemo(() => {
     const map = new Map<string, number>();
@@ -474,12 +607,6 @@ const Index: React.FC = () => {
     refetch();
   };
 
-  const onDateRangeChange = (range: DateRange) => {
-    setDateRange(range);
-    setPage(1);
-    refetch();
-  };
-
   // Only show loading when actually fetching from server
   const showLoading = isFetching && !isClientSideMode;
 
@@ -491,6 +618,71 @@ const Index: React.FC = () => {
     dateRange.start === format(getNovember10thDate(), "yyyy-MM-dd") &&
     dateRange.end === format(new Date(), "yyyy-MM-dd");
 
+  // Check if coupon is valid and exists in agents database
+  const isValidCoupon = useMemo(() => {
+    if (!coupon || !coupon.coupon || couponError || !couponIsFetched) {
+      return false;
+    }
+
+    // Check if this coupon code exists in agentStats (agents database)
+    const couponCode = coupon.coupon.toUpperCase();
+    const existsInAgents = agentStats.some(agent =>
+      agent.coupon && agent.coupon.toUpperCase() === couponCode
+    );
+
+    return existsInAgents;
+  }, [coupon, couponError, couponIsFetched, agentStats]);
+
+  // State to control dropdown visibility
+  const [showCouponDropdown, setShowCouponDropdown] = useState(false);
+
+  // State to control modal visibility (replacing popover)
+  const [couponModalOpen, setCouponModalOpen] = useState(false);
+
+  const handleCouponButtonClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowCouponDropdown(!showCouponDropdown);
+    // Clear previous search when opening dropdown
+    if (!showCouponDropdown) {
+      setCouponSearchCode("");
+      setHasSearchedCoupon(false);
+      setCouponSearchTrigger("");
+      setCouponModalOpen(false); // Close any open modal
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showCouponDropdown && !target.closest('.coupon-search-container')) {
+        setShowCouponDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCouponDropdown]);
+
+  // Effect to open modal when coupon is valid AND exists in agents database
+  useEffect(() => {
+    if (hasSearchedCoupon && couponIsFetched) {
+      if (isValidCoupon) {
+        // Valid coupon found in agents database
+        setCouponModalOpen(true);
+        setShowCouponDropdown(false);
+      } else if (coupon && coupon.coupon) {
+        // Coupon exists in API but NOT in agents database
+        // Show error message in dropdown
+        setCouponModalOpen(false);
+      } else {
+        // Coupon not found at all
+        setCouponModalOpen(false);
+      }
+    }
+  }, [coupon, couponIsFetched, hasSearchedCoupon, isValidCoupon]);
+
+  // Update Navbar props - IMPORTANT: Pass the correct stats
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
       <Navbar
@@ -646,126 +838,78 @@ const Index: React.FC = () => {
                   )}
                 </span>
               </div>
-              <Popover open={couponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="glow" className="gap-2">
-                    <Tag className="h-4 w-4" />
-                    Search Coupon
-                  </Button>
-                </PopoverTrigger>
-
-                <PopoverContent
-                  side="bottom"
-                  align="end"
-                  className="w-[540px] p-4 glass-card-elevated border-border/50"
+              <div className="relative coupon-search-container">
+                <Button
+                  variant="glow"
+                  className="gap-2"
+                  onClick={handleCouponButtonClick}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-lg font-semibold flex items-center gap-2">
-                      <Search className="h-5 w-5 text-primary" />
-                      Search Coupon Code
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setCouponPopoverOpen(false)}
-                    >
-                      Close
-                    </Button>
-                  </div>
+                  <Tag className="h-4 w-4" />
+                  Search Coupon
+                </Button>
 
-                  <div className="space-y-6">
-                    <div className="flex gap-2 min-w-0">
-                      <Input
-                        placeholder="Enter coupon code (e.g., ARAM8893)"
-                        value={couponSearchCode}
-                        onChange={(e) => setCouponSearchCode(e.target.value.toUpperCase())}
-                        onKeyPress={handleCouponKeyPress}
-                        className="font-mono text-lg h-12"
-                      />
-                      <Button
-                        onClick={handleCouponSearch}
-                        disabled={isCouponLoading}
-                        className="h-12 px-6"
-                        variant="glow"
-                      >
-                        {isCouponLoading ? (
-                          <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                        ) : (
-                          <Search className="h-5 w-5" />
-                        )}
-                      </Button>
-                    </div>
-
-                    {couponError && couponIsFetched && (
-                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-center">
-                        Coupon not found or inactive
-                      </div>
-                    )}
-
-                    {coupon && (
-                      <div className="space-y-4 animate-slide-up">
-                        <div className="flex items-center gap-3">
-                          <div className="h-14 w-14 rounded-xl gradient-primary flex items-center justify-center text-2xl font-bold text-primary-foreground">
-                            {coupon.coupon.substring(0, 2)}
-                          </div>
-                          <div>
-                            <h3 className="font-mono text-xl font-bold">
-                              {coupon.coupon}
-                            </h3>
-                            <div className={`inline-flex items-center gap-2`}>
-                              <span
-                                className={`px-2 py-1 rounded-md text-sm ${coupon.active
-                                  ? "bg-success text-foreground"
-                                  : "bg-destructive text-destructive-foreground"
-                                  }`}
-                              >
-                                {coupon.active ? "Active" : "Inactive"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="stat-card">
-                            <div className="text-xs text-muted-foreground mb-1">Discount</div>
-                            <p className="font-semibold text-lg">{coupon.discount}%</p>
-                          </div>
-                          <div className="stat-card">
-                            <div className="text-xs text-muted-foreground mb-1">Usage Limit</div>
-                            <p className="font-semibold text-lg">{coupon.usageLimit}</p>
-                          </div>
-                          <div className="stat-card col-span-2">
-                            <div className="text-xs text-muted-foreground mb-1">Plan</div>
-                            <p className="font-semibold">{coupon.plan}</p>
-                          </div>
-                        </div>
-
-                        {coupon.agent && (
-                          <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                            <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                              Agent Details
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="text-sm">{coupon.agent.name}</div>
-                              <div className="text-sm">{coupon.agent.phone}</div>
-                              <div className="text-sm truncate">{coupon.agent.email}</div>
-                              <div className="text-sm">{coupon.agent.location}</div>
-                            </div>
-                          </div>
-                        )}
-
+                {/* Dropdown Search Form */}
+                {showCouponDropdown && (
+                  <div className="absolute top-full right-0 mt-2 w-96 glass-card rounded-lg p-4 shadow-lg z-50 border border-border">
+                    <div className="space-y-4">
+                      <div className="flex gap-2 min-w-0">
+                        <Input
+                          placeholder="Enter coupon code (e.g., ARAM8893)"
+                          value={couponSearchCode}
+                          onChange={(e) => {
+                            setCouponSearchCode(e.target.value.toUpperCase());
+                            setHasSearchedCoupon(false);
+                          }}
+                          onKeyPress={handleCouponKeyPress}
+                          className="font-mono text-lg h-12"
+                          autoFocus
+                        />
                         <Button
-                          onClick={() => handleViewUsersFromSearch(coupon.coupon)}
-                          className="w-full"
+                          onClick={handleCouponSearch}
+                          disabled={isCouponLoading}
+                          className="h-12 px-6"
                           variant="glow"
                         >
-                          View All Users Who Used This Coupon
+                          {isCouponLoading ? (
+                            <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                          ) : (
+                            <Search className="h-5 w-5" />
+                          )}
                         </Button>
                       </div>
-                    )}
+
+                      {/* Show loading state */}
+                      {isCouponLoading && (
+                        <div className="flex justify-center p-4">
+                          <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                        </div>
+                      )}
+
+                      {/* Show error when: */}
+                      {/* 1. No coupon found at all */}
+                      {/* 2. Coupon found but not in agents database */}
+                      {hasSearchedCoupon && couponIsFetched && !isValidCoupon && (
+                        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <div className="flex items-center gap-3">
+                            <XCircle className="h-6 w-6 text-destructive" />
+                            <div>
+                              <h4 className="font-semibold text-sm text-destructive mb-1">
+                                {coupon && coupon.coupon ? "Invalid Coupon Code" : "Coupon Not Found"}
+                              </h4>
+                              <p className="text-destructive/80 text-xs">
+                                {coupon && coupon.coupon
+                                  ? `The coupon code "${couponSearchTrigger}" is not associated with any agent.`
+                                  : `The coupon code "${couponSearchTrigger}" was not found.`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </PopoverContent>
-              </Popover>
+                )}
+              </div>
             </div>
           </div>
 
@@ -787,7 +931,7 @@ const Index: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-2 w-full lg:w-auto">
                 <DateRangePicker
                   dateRange={dateRange}
                   onDateRangeChange={onDateRangeChange}
@@ -799,79 +943,70 @@ const Index: React.FC = () => {
           {/* Show transactions section when there's a search query OR date filter is changed */}
           {(hasSearchQuery || !isDefaultDateRange) && (
             <>
-              {/* Showing X-Y of Z */}
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-muted-foreground">
-                  Showing{" "}
-                  <span className="font-medium text-foreground">
-                    {rangeStart}-{rangeEnd}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-medium text-foreground">
-                    {totalCount}
-                  </span>{" "}
-                  transactions
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRefresh}
-                    disabled={isFetching}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-                    Refresh
-                  </Button>
-                  <ExportButton
-                    dateRange={dateRange}
-                    searchQuery={searchQuery}
-                    filteredTransactions={filteredTransactions}
-                  />
-                </div>
-              </div>
-
-              {/* Table - Show empty state if no transactions */}
-              {filteredTransactions.length > 0 ? (
-                <>
-                  <TransactionsTable
-                    transactions={displayedTransactions}
-                    isLoading={showLoading}
-                    onCouponClick={handleCouponClick}
-                    sortDirection={sortDirection}
-                    onToggleSort={toggleSort}
-                    statusFilter={statusFilter}
-                    onStatusFilterChange={setStatusFilter}
-                    couponFilter={couponFilter}
-                    onCouponFilterChange={setCouponFilter}
-                  />
-
-                  {/* Pagination */}
-                  {totalPages > 1 && (
-                    <Pagination
-                      currentPage={page}
-                      totalPages={totalPages}
-                      onPageChange={(p) => {
-                        setPage(p);
-                        if (!isClientSideMode) {
-                          refetch();
-                        }
-                      }}
-                      isLoading={showLoading}
+              {/* Showing X-Y of Z - Only show when we have transactions */}
+              {totalCount > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    <span className="font-medium text-foreground">
+                      {rangeStart}-{rangeEnd}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-medium text-foreground">
+                      {totalCount}
+                    </span>{" "}
+                    transactions
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRefresh}
+                      disabled={isFetching}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                    <ExportButton
+                      dateRange={dateRange}
+                      searchQuery={searchQuery}
+                      filteredTransactions={filteredTransactions}
                     />
-                  )}
-                </>
-              ) : (
-                <div className="glass-card rounded-xl p-12 text-center">
-                  <div className="text-4xl mb-4">📭</div>
-                  <h3 className="text-xl font-semibold mb-2">No transactions found</h3>
-                  <p className="text-muted-foreground">
-                    Try adjusting your search query or date range
-                  </p>
+                  </div>
                 </div>
+              )}
+
+              {/* Always show the table component */}
+              <TransactionsTable
+                transactions={displayedTransactions}
+                isLoading={showLoading}
+                onCouponClick={handleCouponClick}
+                sortDirection={sortDirection}
+                onToggleSort={toggleSort}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                couponFilter={couponFilter}
+                onCouponFilterChange={setCouponFilter}
+              />
+
+              {/* Pagination - only show when we have transactions */}
+              {filteredTransactions.length > 0 && totalPages > 1 && (
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={(p) => {
+                    setPage(p);
+                    if (!isClientSideMode) {
+                      refetch();
+                    }
+                  }}
+                  isLoading={showLoading}
+                />
               )}
             </>
           )}
 
+          {/* Topper Modal */}
           {topperModalOpen && (
             <div
               className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
@@ -937,9 +1072,7 @@ const Index: React.FC = () => {
 
                     <tbody>
                       {paginatedToppers.map((agent, idx) => {
-                        // Calculate actual serial number based on page
                         const serialNumber = (topperPage - 1) * TOPPER_PAGE_SIZE + idx + 1;
-
                         return (
                           <tr
                             key={idx}
@@ -996,7 +1129,119 @@ const Index: React.FC = () => {
         </div>
       </main>
 
-      {/* Coupon modal portal */}
+      {/* Coupon Details Modal - Replaces Popover */}
+      {couponModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          onClick={() => setCouponModalOpen(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/70" />
+
+          {/* Modal */}
+          <div
+            className="relative bg-card rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Search className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold">Coupon Details</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCouponModalOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-xl gradient-primary flex items-center justify-center text-2xl font-bold text-primary-foreground">
+                  {coupon?.coupon?.substring(0, 2)}
+                </div>
+                <div>
+                  <h3 className="font-mono text-2xl font-bold">
+                    {coupon?.coupon}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`px-3 py-1 rounded-md text-sm ${coupon?.active
+                        ? "bg-success text-foreground"
+                        : "bg-destructive text-destructive-foreground"
+                        }`}
+                    >
+                      {coupon?.active ? "Active" : "Inactive"}
+                    </span>
+                    <span className="px-3 py-1 rounded-md text-sm bg-blue-100 text-blue-800">
+                      Found in Agents DB
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="stat-card p-4">
+                  <div className="text-sm text-muted-foreground mb-2">Discount</div>
+                  <p className="font-semibold text-2xl">{coupon?.discount}%</p>
+                </div>
+                <div className="stat-card p-4">
+                  <div className="text-sm text-muted-foreground mb-2">Usage Limit</div>
+                  <p className="font-semibold text-2xl">{coupon?.usageLimit}</p>
+                </div>
+                <div className="stat-card col-span-2 p-4">
+                  <div className="text-sm text-muted-foreground mb-2">Plan</div>
+                  <p className="font-semibold text-lg">{coupon?.plan || "Unknown Plan"}</p>
+                </div>
+              </div>
+
+              {coupon?.agent && coupon?.agent.name && (
+                <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                  <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                    Agent Details
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Name</div>
+                      <div className="text-sm font-medium">{coupon.agent.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Phone</div>
+                      <div className="text-sm font-medium">{coupon.agent.phone || "—"}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-xs text-muted-foreground">Email</div>
+                      <div className="text-sm font-medium truncate">{coupon.agent.email || "—"}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-xs text-muted-foreground">Location</div>
+                      <div className="text-sm font-medium">{coupon.agent.location || "—"}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                onClick={() => handleViewUsersFromSearch(coupon?.coupon || "")}
+                className="w-full py-3"
+                variant="glow"
+                disabled={!coupon?.active}
+                size="lg"
+              >
+                {coupon?.active
+                  ? "View All Users Who Used This Coupon"
+                  : "Coupon is Inactive - No Users"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Coupon Users Modal */}
       {mounted &&
         createPortal(
           <CouponUsersModal
