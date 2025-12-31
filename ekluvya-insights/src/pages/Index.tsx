@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users, XCircle, X } from "lucide-react";
+import { Search, Tag, RefreshCw, Users, XCircle, X } from "lucide-react"; // Added X icon
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -20,7 +20,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
-import { Plane, Briefcase, Shirt, User } from "lucide-react";
+import { Plane, Briefcase, Shirt, User } from "lucide-react"; // Added User icon
 
 const TOPPER_PAGE_SIZE = 10;
 const LOCATION_PAGE_SIZE = 15;
@@ -58,6 +58,7 @@ const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({
+    // Set default to November 10th of current year to today
     start: format(getNovember10thDate(), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
@@ -409,6 +410,7 @@ const Index: React.FC = () => {
     }
 
     if (isAfter(startDate, endDate)) {
+      // setDateError("From date cannot be greater than To date");
       return false;
     }
 
@@ -422,6 +424,7 @@ const Index: React.FC = () => {
       setPage(1);
       refetch();
     } else {
+      // Don't update date range if invalid
       toast.error(dateError || "Invalid date range");
     }
   };
@@ -430,16 +433,22 @@ const Index: React.FC = () => {
     const map = new Map<string, number>();
 
     (allTopperData || []).forEach((t: any) => {
+      // ✅ Only successful transactions
       if (t.paymentStatus !== 2) return;
+
+      // ✅ Keep same subscription filter
       if (Number(t.amount) !== 5841) return;
 
+      // 🔥 Normalize location
       let location =
         t.agentLocation ||
         t.location ||
         "AGENTS WITHOUT LOCATION";
 
+      // Trim + uppercase
       location = String(location).trim().toUpperCase();
 
+      // Handle N/A, NULL, EMPTY
       if (
         location === "" ||
         location === "N/A" ||
@@ -453,10 +462,12 @@ const Index: React.FC = () => {
       map.set(location, (map.get(location) || 0) + 1);
     });
 
+    // 🔥 Sort by count DESC
     return Array.from(map.entries())
       .map(([location, count]) => ({ location, count }))
       .sort((a, b) => b.count - a.count);
   }, [allTopperData]);
+
 
   const locationTotalPages = Math.max(
     1,
@@ -477,21 +488,28 @@ const Index: React.FC = () => {
         location: string;
         count: number;
         coupon: string;
-        uniqueUsers: Set<string>;
+        uniqueUsers: Set<string>; // Track unique users instead of transactions
       }
     >();
 
-    const seenUsers = new Set<string>();
+    const seenUsers = new Set<string>(); // Global set to track users across all agents
 
     (allTopperData || []).forEach((t: any) => {
+      // ❌ Skip invalid agent
       if (!t.agentName) return;
+
+      // ❌ Skip failed transactions
       if (t.paymentStatus !== 2) return;
+
+      // ❌ Coupon-only filter (5841 amount)
       if (Number(t.amount) !== 5841) return;
 
+      // ✅ Get user identifier (username + mobile)
       const userName = String(t.userName || t.name || "").trim().toLowerCase();
       const userPhone = String(t.phone || t.userPhone || "").trim();
       const userKey = `${userName}|${userPhone}`;
 
+      // Skip if userKey is invalid (no user info)
       if (!userName && !userPhone) return;
 
       const agentKey = t.agentName.trim();
@@ -509,21 +527,29 @@ const Index: React.FC = () => {
 
       const agent = map.get(agentKey)!;
 
+      // ✅ Check if this user has already been counted for ANY agent
+      const globalUserKey = `${agentKey}:${userKey}`;
+
+      // ❌ Skip if user already counted for this specific agent
       if (agent.uniqueUsers.has(userKey)) return;
 
       if (seenUsers.has(userKey)) {
+        // User already counted for another agent
         return;
       }
 
+      // ✅ Count this user for the agent
       agent.uniqueUsers.add(userKey);
-      seenUsers.add(userKey);
+      seenUsers.add(userKey); // Mark user as counted globally
       agent.count += 1;
     });
 
+    // 🔥 Return sorted list (DESC)
     return Array.from(map.values())
       .map(({ uniqueUsers, ...rest }) => rest)
       .sort((a, b) => b.count - a.count);
   }, [allTopperData]);
+
 
   const agents50 = agentStats.filter(a => a.count >= 50);
   const agents25 = agentStats.filter(
@@ -532,6 +558,7 @@ const Index: React.FC = () => {
   const agents10 = agentStats.filter(
     a => a.count >= 10 && a.count < 25
   );
+  // NEW: Agents with 1-9 subscriptions
   const agents1to9 = agentStats.filter(
     a => a.count >= 1 && a.count < 10
   );
@@ -540,7 +567,7 @@ const Index: React.FC = () => {
     if (selectedTopperTier === "50") return agents50;
     if (selectedTopperTier === "25") return agents25;
     if (selectedTopperTier === "10") return agents10;
-    if (selectedTopperTier === "1-9") return agents1to9;
+    if (selectedTopperTier === "1-9") return agents1to9; // NEW
     return [];
   }, [selectedTopperTier, agents50, agents25, agents10, agents1to9]);
 
@@ -563,7 +590,7 @@ const Index: React.FC = () => {
         : selectedTopperTier === "10"
           ? agents10
           : selectedTopperTier === "1-9"
-            ? agents1to9
+            ? agents1to9 // NEW
             : [];
 
   const topperTotalPages = Math.max(
@@ -589,17 +616,24 @@ const Index: React.FC = () => {
     refetch();
   };
 
+  // Only show loading when actually fetching from server
   const showLoading = isFetching && !isClientSideMode;
+
+  // Check if there's a search query to show transactions
   const hasSearchQuery = searchQuery.trim().length > 0;
+
+  // Check if date range is different from default
   const isDefaultDateRange =
     dateRange.start === format(getNovember10thDate(), "yyyy-MM-dd") &&
     dateRange.end === format(new Date(), "yyyy-MM-dd");
 
+  // Check if coupon is valid and exists in agents database
   const isValidCoupon = useMemo(() => {
     if (!coupon || !coupon.coupon || couponError || !couponIsFetched) {
       return false;
     }
 
+    // Check if this coupon code exists in agentStats (agents database)
     const couponCode = coupon.coupon.toUpperCase();
     const existsInAgents = agentStats.some(agent =>
       agent.coupon && agent.coupon.toUpperCase() === couponCode
@@ -608,20 +642,25 @@ const Index: React.FC = () => {
     return existsInAgents;
   }, [coupon, couponError, couponIsFetched, agentStats]);
 
+  // State to control dropdown visibility
   const [showCouponDropdown, setShowCouponDropdown] = useState(false);
+
+  // State to control modal visibility (replacing popover)
   const [couponModalOpen, setCouponModalOpen] = useState(false);
 
   const handleCouponButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowCouponDropdown(!showCouponDropdown);
+    // Clear previous search when opening dropdown
     if (!showCouponDropdown) {
       setCouponSearchCode("");
       setHasSearchedCoupon(false);
       setCouponSearchTrigger("");
-      setCouponModalOpen(false);
+      setCouponModalOpen(false); // Close any open modal
     }
   };
 
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -634,19 +673,25 @@ const Index: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showCouponDropdown]);
 
+  // Effect to open modal when coupon is valid AND exists in agents database
   useEffect(() => {
     if (hasSearchedCoupon && couponIsFetched) {
       if (isValidCoupon) {
+        // Valid coupon found in agents database
         setCouponModalOpen(true);
         setShowCouponDropdown(false);
       } else if (coupon && coupon.coupon) {
+        // Coupon exists in API but NOT in agents database
+        // Show error message in dropdown
         setCouponModalOpen(false);
       } else {
+        // Coupon not found at all
         setCouponModalOpen(false);
       }
     }
   }, [coupon, couponIsFetched, hasSearchedCoupon, isValidCoupon]);
 
+  // Update Navbar props - IMPORTANT: Pass the correct stats
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
       <Navbar
@@ -658,23 +703,24 @@ const Index: React.FC = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-6">
           {/* Header & Coupon Search */}
-          <div className="glass-card rounded-xl p-4 md:p-6 space-y-4">
-            <h2 className="text-xl md:text-2xl font-bold tracking-tight">
+          <div className="glass-card rounded-xl p-6 space-y-4">
+            <h2 className="text-2xl font-bold tracking-tight">
               🏆 Toppers Dashboard
             </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            {/* Updated grid to 4 columns */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* 50+ */}
               <div
                 onClick={() => {
                   setSelectedTopperTier("50");
                   setTopperModalOpen(true);
                 }}
-                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-2 md:gap-3 hover:scale-[1.02] transition p-3 md:p-4"
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition p-4"
               >
-                <Plane className="h-6 w-6 md:h-8 md:w-8 text-primary" />
-                <div className="text-2xl md:text-3xl font-bold">{agents50.length}</div>
-                <div className="text-xs md:text-sm text-muted-foreground text-center leading-tight md:leading-normal">
+                <Plane className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents50.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
                   Agents with 50+ Subscriptions
                 </div>
               </div>
@@ -685,11 +731,11 @@ const Index: React.FC = () => {
                   setSelectedTopperTier("25");
                   setTopperModalOpen(true);
                 }}
-                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-2 md:gap-3 hover:scale-[1.02] transition p-3 md:p-4"
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition p-4"
               >
-                <Briefcase className="h-6 w-6 md:h-8 md:w-8 text-primary" />
-                <div className="text-2xl md:text-3xl font-bold">{agents25.length}</div>
-                <div className="text-xs md:text-sm text-muted-foreground text-center leading-tight md:leading-normal">
+                <Briefcase className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents25.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
                   Agents with 25+ Subscriptions
                 </div>
               </div>
@@ -700,26 +746,26 @@ const Index: React.FC = () => {
                   setSelectedTopperTier("10");
                   setTopperModalOpen(true);
                 }}
-                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-2 md:gap-3 hover:scale-[1.02] transition p-3 md:p-4"
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition p-4"
               >
-                <Shirt className="h-6 w-6 md:h-8 md:w-8 text-primary" />
-                <div className="text-2xl md:text-3xl font-bold">{agents10.length}</div>
-                <div className="text-xs md:text-sm text-muted-foreground text-center leading-tight md:leading-normal">
+                <Shirt className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents10.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
                   Agents with 10+ Subscriptions
                 </div>
               </div>
 
-              {/* 1-9 Subscriptions */}
+              {/* NEW: 1-9 Subscriptions */}
               <div
                 onClick={() => {
                   setSelectedTopperTier("1-9");
                   setTopperModalOpen(true);
                 }}
-                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-2 md:gap-3 hover:scale-[1.02] transition p-3 md:p-4"
+                className="cursor-pointer stat-card flex flex-col items-center justify-center gap-3 hover:scale-[1.02] transition p-4"
               >
-                <User className="h-6 w-6 md:h-8 md:w-8 text-primary" />
-                <div className="text-2xl md:text-3xl font-bold">{agents1to9.length}</div>
-                <div className="text-xs md:text-sm text-muted-foreground text-center leading-tight md:leading-normal">
+                <User className="h-8 w-8 text-primary" />
+                <div className="text-3xl font-bold">{agents1to9.length}</div>
+                <div className="text-sm text-muted-foreground text-center">
                   Agents with 1-9 Subscriptions
                 </div>
               </div>
@@ -727,42 +773,43 @@ const Index: React.FC = () => {
           </div>
 
           {/* 📍 Location-wise Subscriptions */}
-          <div className="glass-card rounded-xl p-4 md:p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h3 className="text-lg md:text-xl font-bold">
+          <div className="glass-card rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold">
                 📍 Subscriptions by Location
               </h3>
-              <span className="text-xs md:text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 Total Locations: {locationStats.length}
               </span>
             </div>
 
-            <div className="table-container overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full border-collapse text-sm">
                 <thead className="bg-muted sticky top-0 z-10">
                   <tr className="border-b">
-                    <th className="px-2 py-2 md:px-3 md:py-2 text-center w-10 md:w-12">S.No</th>
-                    <th className="px-2 py-2 md:px-3 md:py-2 text-center">Location</th>
-                    <th className="px-2 py-2 md:px-3 md:py-2 text-center">Subscriptions</th>
+                    <th className="px-3 py-2 text-center w-12">S.No</th>
+                    <th className="px-3 py-2 text-center">Location</th>
+                    <th className="px-3 py-2 text-center">Subscriptions</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {paginatedLocations.map((row, idx) => {
-                    const serial = (locationPage - 1) * LOCATION_PAGE_SIZE + idx + 1;
+                    const serial =
+                      (locationPage - 1) * LOCATION_PAGE_SIZE + idx + 1;
 
                     return (
                       <tr
                         key={row.location}
                         className="border-b last:border-0 hover:bg-muted/40 transition"
                       >
-                        <td className="px-2 py-2 md:px-3 md:py-2 text-center text-muted-foreground">
+                        <td className="px-3 py-2 text-center text-muted-foreground">
                           {serial}
                         </td>
-                        <td className="px-2 py-2 md:px-3 md:py-2 text-center font-medium truncate max-w-[150px] md:max-w-[220px]">
+                        <td className="px-3 py-2 text-center font-medium truncate max-w-[220px]">
                           {row.location}
                         </td>
-                        <td className="px-2 py-2 md:px-3 md:py-2 text-center font-bold text-primary">
+                        <td className="px-3 py-2 text-center font-bold text-primary">
                           {row.count}
                         </td>
                       </tr>
@@ -773,7 +820,7 @@ const Index: React.FC = () => {
                     <tr>
                       <td
                         colSpan={3}
-                        className="text-center text-muted-foreground py-6 md:py-8"
+                        className="text-center text-muted-foreground py-8"
                       >
                         No data found
                       </td>
@@ -784,7 +831,7 @@ const Index: React.FC = () => {
             </div>
 
             {locationTotalPages > 1 && (
-              <div className="flex justify-center pt-3 md:pt-4">
+              <div className="flex justify-center pt-4">
                 <Pagination
                   currentPage={locationPage}
                   totalPages={locationTotalPages}
@@ -795,79 +842,83 @@ const Index: React.FC = () => {
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="text-center md:text-left">
-              <h2 className="text-xl md:text-2xl font-bold tracking-tight">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">
                 All Transactions
               </h2>
-              <p className="text-sm md:text-base text-muted-foreground mt-1">
+              <p className="text-muted-foreground">
                 Search by Mobile, Name, Amount, or Agent
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4">
+            <div className="flex items-center gap-4">
               {/* Total Agents Count */}
-              <div className="flex items-center gap-2 text-muted-foreground bg-card px-3 py-2 rounded-lg">
-                <Users className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-                <span className="text-sm md:text-base">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Users className="h-5 w-5 text-primary" />
+                <span className="text-large">
                   Total Agents:
                   {agentsLoading ? (
-                    <span className="ml-2 inline-block h-4 w-16 md:h-5 md:w-20 shimmer rounded" />
+                    <span className="ml-2 inline-block h-5 w-20 shimmer rounded" />
                   ) : (
-                    <span className="font-bold text-foreground ml-1 md:ml-2">{totalAgents.toLocaleString()}</span>
+                    <span className="font-bold text-foreground ml-2">{totalAgents.toLocaleString()}</span>
                   )}
                 </span>
               </div>
-              <div className="relative coupon-search-container w-full sm:w-auto">
+              <div className="relative coupon-search-container">
                 <Button
                   variant="glow"
-                  className="gap-1 md:gap-2 w-full sm:w-auto py-2 md:py-0"
+                  className="gap-2"
                   onClick={handleCouponButtonClick}
                 >
-                  <Tag className="h-3 w-3 md:h-4 md:w-4" />
-                  <span className="text-sm md:text-base">Search Coupon</span>
+                  <Tag className="h-4 w-4" />
+                  Search Coupon
                 </Button>
 
                 {/* Dropdown Search Form */}
                 {showCouponDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-full sm:w-96 glass-card rounded-lg p-3 md:p-4 shadow-lg z-50 border border-border coupon-dropdown">
-                    <div className="space-y-3 md:space-y-4">
-                      <div className="flex gap-1 md:gap-2 min-w-0">
+                  <div className="absolute top-full right-0 mt-2 w-96 glass-card rounded-lg p-4 shadow-lg z-50 border border-border">
+                    <div className="space-y-4">
+                      <div className="flex gap-2 min-w-0">
                         <Input
-                          placeholder="Enter coupon code"
+                          placeholder="Enter coupon code (e.g., ARAM8893)"
                           value={couponSearchCode}
                           onChange={(e) => {
                             setCouponSearchCode(e.target.value.toUpperCase());
                             setHasSearchedCoupon(false);
                           }}
                           onKeyPress={handleCouponKeyPress}
-                          className="font-mono text-sm md:text-lg h-10 md:h-12"
+                          className="font-mono text-lg h-12"
                           autoFocus
                         />
                         <Button
                           onClick={handleCouponSearch}
                           disabled={isCouponLoading}
-                          className="h-10 md:h-12 px-3 md:px-6"
+                          className="h-12 px-6"
                           variant="glow"
                         >
                           {isCouponLoading ? (
-                            <div className="h-4 w-4 md:h-5 md:w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                            <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                           ) : (
-                            <Search className="h-4 w-4 md:h-5 md:w-5" />
+                            <Search className="h-5 w-5" />
                           )}
                         </Button>
                       </div>
 
+                      {/* Show loading state */}
                       {isCouponLoading && (
-                        <div className="flex justify-center p-2 md:p-4">
-                          <div className="h-6 w-6 md:h-8 md:w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                        <div className="flex justify-center p-4">
+                          <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                         </div>
                       )}
 
+                      {/* Show error when: */}
+                      {/* 1. No coupon found at all */}
+                      {/* 2. Coupon found but not in agents database */}
                       {hasSearchedCoupon && couponIsFetched && !isValidCoupon && (
-                        <div className="p-3 md:p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-                          <div className="flex items-center gap-2 md:gap-3">
-                            <XCircle className="h-4 w-4 md:h-6 md:w-6 text-destructive" />
+                        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <div className="flex items-center gap-3">
+                            <XCircle className="h-6 w-6 text-destructive" />
                             <div>
-                              <h4 className="font-semibold text-xs md:text-sm text-destructive mb-1">
+                              <h4 className="font-semibold text-sm text-destructive mb-1">
                                 {coupon && coupon.coupon ? "Invalid Coupon Code" : "Coupon Not Found"}
                               </h4>
                               <p className="text-destructive/80 text-xs">
@@ -888,11 +939,11 @@ const Index: React.FC = () => {
           </div>
 
           {/* Search + Date */}
-          <div className="glass-card rounded-xl p-3 md:p-4">
-            <div className="flex flex-col lg:flex-row gap-3 md:gap-4 items-start lg:items-center justify-between search-date-container">
+          <div className="glass-card rounded-xl p-4">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
               <div className="flex-1 w-full">
-                <div className="relative search-input-container">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 md:h-5 md:w-5 text-muted-foreground" />
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     placeholder="Search by mobile, name, amount, agent..."
                     value={searchQuery}
@@ -900,12 +951,12 @@ const Index: React.FC = () => {
                       setSearchQuery(e.target.value.trim().toLowerCase());
                       setPage(1);
                     }}
-                    className="pl-9 md:pl-11 h-10 md:h-12 text-sm md:text-base font-medium"
+                    className="pl-11 h-12 text-base font-medium"
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 w-full lg:w-auto date-picker-container">
+              <div className="flex flex-col gap-2 w-full lg:w-auto">
                 <DateRangePicker
                   dateRange={dateRange}
                   onDateRangeChange={onDateRangeChange}
@@ -919,8 +970,8 @@ const Index: React.FC = () => {
             <>
               {/* Showing X-Y of Z - Only show when we have transactions */}
               {totalCount > 0 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="text-xs md:text-sm text-muted-foreground text-center sm:text-left">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
                     Showing{" "}
                     <span className="font-medium text-foreground">
                       {rangeStart}-{rangeEnd}
@@ -937,10 +988,9 @@ const Index: React.FC = () => {
                       size="sm"
                       onClick={handleRefresh}
                       disabled={isFetching}
-                      className="h-8 md:h-9 px-2 md:px-3"
                     >
-                      <RefreshCw className={`h-3 w-3 md:h-4 md:w-4 ${isFetching ? "animate-spin" : ""}`} />
-                      <span className="ml-1 md:ml-2 text-xs md:text-sm">Refresh</span>
+                      <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                      Refresh
                     </Button>
                     <ExportButton
                       dateRange={dateRange}
@@ -966,19 +1016,17 @@ const Index: React.FC = () => {
 
               {/* Pagination - only show when we have transactions */}
               {filteredTransactions.length > 0 && totalPages > 1 && (
-                <div className="pagination-container">
-                  <Pagination
-                    currentPage={page}
-                    totalPages={totalPages}
-                    onPageChange={(p) => {
-                      setPage(p);
-                      if (!isClientSideMode) {
-                        refetch();
-                      }
-                    }}
-                    isLoading={showLoading}
-                  />
-                </div>
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={(p) => {
+                    setPage(p);
+                    if (!isClientSideMode) {
+                      refetch();
+                    }
+                  }}
+                  isLoading={showLoading}
+                />
               )}
             </>
           )}
@@ -986,24 +1034,28 @@ const Index: React.FC = () => {
           {/* Topper Modal */}
           {topperModalOpen && (
             <div
-              className="modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-2 md:p-4"
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
               onClick={() => setTopperModalOpen(false)}
             >
+              {/* Backdrop */}
+              <div className="absolute inset-0 bg-black/70" />
+
               {/* Modal */}
               <div
-                className="relative bg-card rounded-lg md:rounded-2xl shadow-2xl w-full max-w-2xl md:max-w-3xl max-h-[85vh] md:max-h-[90vh] overflow-hidden"
+                className="relative bg-card rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 md:p-6 border-b border-border">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <h2 className="text-lg md:text-2xl font-bold truncate max-w-[200px] md:max-w-none">
-                      {selectedTopperTier === "50" && "Agents with 50+ Subs"}
-                      {selectedTopperTier === "25" && "Agents with 25+ Subs"}
-                      {selectedTopperTier === "10" && "Agents with 10+ Subs"}
-                      {selectedTopperTier === "1-9" && "Agents with 1-9 Subs"}
+                <div className="flex items-center justify-between p-6 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-bold">
+                      {selectedTopperTier === "50" && "Agents with 50+ Subscriptions"}
+                      {selectedTopperTier === "25" && "Agents with 25+ Subscriptions"}
+                      {selectedTopperTier === "10" && "Agents with 10+ Subscriptions"}
+                      {selectedTopperTier === "1-9" && "Agents with 1-9 Subscriptions"} {/* NEW */}
                     </h2>
-                    <span className="px-2 py-1 md:px-3 md:py-1 rounded-full bg-white text-black text-sm md:text-lg font-semibold whitespace-nowrap">
+
+                    <span className="px-3 py-1 rounded-full bg-white text-black text-lg font-semibold">
                       {activeToppers.length}
                     </span>
                   </div>
@@ -1012,85 +1064,84 @@ const Index: React.FC = () => {
                     variant="ghost"
                     size="icon"
                     onClick={() => setTopperModalOpen(false)}
-                    className="h-8 w-8 md:h-10 md:w-10"
                   >
-                    <X className="h-4 w-4 md:h-5 md:w-5" />
+                    ✕
                   </Button>
                 </div>
 
                 {/* Body */}
-                <div className="max-h-[calc(85vh-120px)] md:max-h-[420px] overflow-y-auto p-2 md:m-6">
-                  <div className="table-container rounded-lg border border-border">
-                    <table className="w-full border-collapse text-xs md:text-sm">
-                      <thead className="sticky top-0 bg-background z-10">
-                        <tr className="border-b">
-                          <th className="px-2 py-2 text-left font-semibold w-8 md:w-12">
-                            S.No
-                          </th>
-                          <th className="px-2 py-2 text-left font-semibold">
-                            Agent Name
-                          </th>
-                          <th className="px-2 py-2 text-left font-semibold hidden sm:table-cell">
-                            Coupon
-                          </th>
-                          <th className="px-2 py-2 text-left font-semibold hidden lg:table-cell">
-                            Mobile
-                          </th>
-                          <th className="px-2 py-2 text-left font-semibold hidden md:table-cell">
-                            Location
-                          </th>
-                          <th className="px-2 py-2 text-right font-semibold">
-                            Subs
-                          </th>
-                        </tr>
-                      </thead>
+                <div className="max-h-[420px] overflow-y-auto rounded-lg border border-border m-6">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 bg-background z-10">
+                      <tr className="border-b">
+                        {/* Added S.No column */}
+                        <th className="px-2 py-2 text-left font-semibold w-12">
+                          S.No
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Agent Name
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Coupon
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Mobile
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold">
+                          Location
+                        </th>
+                        <th className="px-2 py-2 text-right font-semibold">
+                          Subs
+                        </th>
+                      </tr>
+                    </thead>
 
-                      <tbody>
-                        {paginatedToppers.map((agent, idx) => {
-                          const serialNumber = (topperPage - 1) * TOPPER_PAGE_SIZE + idx + 1;
-                          return (
-                            <tr
-                              key={idx}
-                              className="border-b last:border-0 hover:bg-muted/40 transition"
-                            >
-                              <td className="px-2 py-2 text-left text-muted-foreground font-medium">
-                                {serialNumber}
-                              </td>
-                              <td className="px-2 py-2 font-medium truncate max-w-[100px] md:max-w-[180px]">
-                                {agent.name}
-                              </td>
-                              <td className="px-2 py-2 font-mono text-muted-foreground hidden sm:table-cell">
-                                {agent.coupon}
-                              </td>
-                              <td className="px-2 py-2 font-mono text-muted-foreground whitespace-nowrap hidden lg:table-cell">
-                                {agent.mobile}
-                              </td>
-                              <td className="px-2 py-2 text-muted-foreground truncate max-w-[100px] md:max-w-[180px] hidden md:table-cell">
-                                {agent.location}
-                              </td>
-                              <td className="px-2 py-2 text-right font-bold text-primary whitespace-nowrap">
-                                {agent.count}
-                              </td>
-                            </tr>
-                          );
-                        })}
-
-                        {paginatedToppers.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={6}
-                              className="text-center text-muted-foreground py-6 md:py-8"
-                            >
-                              No agents found
+                    <tbody>
+                      {paginatedToppers.map((agent, idx) => {
+                        const serialNumber = (topperPage - 1) * TOPPER_PAGE_SIZE + idx + 1;
+                        return (
+                          <tr
+                            key={idx}
+                            className="border-b last:border-0 hover:bg-muted/40 transition"
+                          >
+                            {/* S.No cell */}
+                            <td className="px-3 py-2 text-left text-muted-foreground font-medium">
+                              {serialNumber}
+                            </td>
+                            <td className="px-3 py-2 font-medium truncate max-w-[180px]">
+                              {agent.name}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-muted-foreground">
+                              {agent.coupon}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">
+                              {agent.mobile}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground truncate max-w-[180px]">
+                              {agent.location}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-primary whitespace-nowrap">
+                              {agent.count}
                             </td>
                           </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                        );
+                      })}
+
+                      {paginatedToppers.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6} // Updated colSpan to 6 for new column
+                            className="text-center text-muted-foreground py-8"
+                          >
+                            No agents found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
                 {topperTotalPages > 1 && (
-                  <div className="flex justify-center p-3 md:p-4 border-t border-border">
+                  <div className="flex justify-center p-4 border-t border-border">
                     <Pagination
                       currentPage={topperPage}
                       totalPages={topperTotalPages}
@@ -1104,86 +1155,89 @@ const Index: React.FC = () => {
         </div>
       </main>
 
-      {/* Coupon Details Modal */}
+      {/* Coupon Details Modal - Replaces Popover */}
       {couponModalOpen && (
         <div
-          className="modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-2 md:p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
           onClick={() => setCouponModalOpen(false)}
         >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/70" />
+
+          {/* Modal */}
           <div
-            className="relative bg-card rounded-lg md:rounded-2xl shadow-2xl w-full max-w-md md:max-w-lg max-h-[85vh] md:max-h-[90vh] overflow-hidden"
+            className="relative bg-card rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 md:p-6 border-b border-border">
+            <div className="flex items-center justify-between p-6 border-b border-border">
               <div className="flex items-center gap-2">
-                <Search className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-                <h2 className="text-lg md:text-xl font-semibold">Coupon Details</h2>
+                <Search className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold">Coupon Details</h2>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setCouponModalOpen(false)}
-                className="h-8 w-8 md:h-10 md:w-10"
               >
-                <X className="h-4 w-4 md:h-5 md:w-5" />
+                <X className="h-5 w-5" />
               </Button>
             </div>
 
             {/* Body */}
-            <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-h-[calc(85vh-120px)] md:max-h-[calc(90vh-120px)] overflow-y-auto">
-              <div className="flex items-center gap-3 md:gap-4">
-                <div className="h-12 w-12 md:h-16 md:w-16 rounded-xl gradient-primary flex items-center justify-center text-xl md:text-2xl font-bold text-primary-foreground">
+            <div className="p-6 space-y-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-xl gradient-primary flex items-center justify-center text-2xl font-bold text-primary-foreground">
                   {coupon?.coupon?.substring(0, 2)}
                 </div>
                 <div>
-                  <h3 className="font-mono text-lg md:text-2xl font-bold">
+                  <h3 className="font-mono text-2xl font-bold">
                     {coupon?.coupon}
                   </h3>
-                  <div className="flex flex-wrap gap-1 md:gap-2 mt-1 md:mt-2">
+                  <div className="flex items-center gap-2 mt-2">
                     <span
-                      className={`px-2 py-1 md:px-3 md:py-1 rounded-md text-xs md:text-sm ${coupon?.active
+                      className={`px-3 py-1 rounded-md text-sm ${coupon?.active
                         ? "bg-success text-foreground"
                         : "bg-destructive text-destructive-foreground"
                         }`}
                     >
                       {coupon?.active ? "Active" : "Inactive"}
                     </span>
-                    <span className="px-2 py-1 md:px-3 md:py-1 rounded-md text-xs md:text-sm bg-blue-100 text-blue-800">
+                    <span className="px-3 py-1 rounded-md text-sm bg-blue-100 text-blue-800">
                       Found in Agents DB
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 md:gap-4">
-                <div className="stat-card p-3 md:p-4">
-                  <div className="text-xs md:text-sm text-muted-foreground mb-1 md:mb-2">Discount</div>
-                  <p className="font-semibold text-xl md:text-2xl">{coupon?.discount}%</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="stat-card p-4">
+                  <div className="text-sm text-muted-foreground mb-2">Discount</div>
+                  <p className="font-semibold text-2xl">{coupon?.discount}%</p>
                 </div>
-                <div className="stat-card p-3 md:p-4">
-                  <div className="text-xs md:text-sm text-muted-foreground mb-1 md:mb-2">Usage Limit</div>
-                  <p className="font-semibold text-xl md:text-2xl">{coupon?.usageLimit}</p>
+                <div className="stat-card p-4">
+                  <div className="text-sm text-muted-foreground mb-2">Usage Limit</div>
+                  <p className="font-semibold text-2xl">{coupon?.usageLimit}</p>
                 </div>
-                <div className="stat-card col-span-2 p-3 md:p-4">
-                  <div className="text-xs md:text-sm text-muted-foreground mb-1 md:mb-2">Plan</div>
-                  <p className="font-semibold text-base md:text-lg">{coupon?.plan || "Unknown Plan"}</p>
+                <div className="stat-card col-span-2 p-4">
+                  <div className="text-sm text-muted-foreground mb-2">Plan</div>
+                  <p className="font-semibold text-lg">{coupon?.plan || "Unknown Plan"}</p>
                 </div>
               </div>
 
               {coupon?.agent && coupon?.agent.name && (
-                <div className="p-3 md:p-4 rounded-lg bg-muted/50 space-y-2 md:space-y-3">
-                  <h4 className="font-semibold text-xs md:text-sm text-muted-foreground uppercase tracking-wide">
+                <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                  <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                     Agent Details
                   </h4>
-                  <div className="grid grid-cols-2 gap-2 md:gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="text-xs text-muted-foreground">Name</div>
-                      <div className="text-sm font-medium truncate">{coupon.agent.name}</div>
+                      <div className="text-sm font-medium">{coupon.agent.name}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Phone</div>
-                      <div className="text-sm font-medium truncate">{coupon.agent.phone || "—"}</div>
+                      <div className="text-sm font-medium">{coupon.agent.phone || "—"}</div>
                     </div>
                     <div className="col-span-2">
                       <div className="text-xs text-muted-foreground">Email</div>
@@ -1191,7 +1245,7 @@ const Index: React.FC = () => {
                     </div>
                     <div className="col-span-2">
                       <div className="text-xs text-muted-foreground">Location</div>
-                      <div className="text-sm font-medium truncate">{coupon.agent.location || "—"}</div>
+                      <div className="text-sm font-medium">{coupon.agent.location || "—"}</div>
                     </div>
                   </div>
                 </div>
@@ -1199,13 +1253,13 @@ const Index: React.FC = () => {
 
               <Button
                 onClick={() => handleViewUsersFromSearch(coupon?.coupon || "")}
-                className="w-full py-2 md:py-3 text-sm md:text-base"
+                className="w-full py-3"
                 variant="glow"
                 disabled={!coupon?.active}
                 size="lg"
               >
                 {coupon?.active
-                  ? "View Users Who Used This Coupon"
+                  ? "View All Users Who Used This Coupon"
                   : "Coupon is Inactive - No Users"}
               </Button>
             </div>
@@ -1226,5 +1280,4 @@ const Index: React.FC = () => {
     </div>
   );
 };
-
 export default Index;
