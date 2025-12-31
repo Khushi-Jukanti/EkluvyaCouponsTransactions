@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users, XCircle, X } from "lucide-react"; // Added X icon
+import { Search, Tag, RefreshCw, Users, XCircle, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -15,12 +15,7 @@ import { DateRange } from "@/types";
 import { toast } from "sonner";
 import { format, parse, parseISO, isAfter, isValid } from "date-fns";
 import { BASE_URL } from "@/config/api";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
-import { Plane, Briefcase, Shirt, User } from "lucide-react"; // Added User icon
+import { Plane, Briefcase, Shirt, User } from "lucide-react";
 
 const TOPPER_PAGE_SIZE = 10;
 const LOCATION_PAGE_SIZE = 15;
@@ -70,14 +65,18 @@ const Index: React.FC = () => {
   const [couponSearchCode, setCouponSearchCode] = useState("");
   const [couponSearchTrigger, setCouponSearchTrigger] = useState("");
   const [hasSearchedCoupon, setHasSearchedCoupon] = useState(false);
-
+  const [showCouponDropdown, setShowCouponDropdown] = useState(false);
+  const [couponModalOpen, setCouponModalOpen] = useState(false);
   const [couponUsersOpen, setCouponUsersOpen] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState("");
 
+  // NEW: Add missing state variables
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+  const [couponExists, setCouponExists] = useState<boolean | null>(null);
+  const [couponAgentDetails, setCouponAgentDetails] = useState<any>(null);
+
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-
   const [mounted, setMounted] = useState(false);
-
   const [totalAgents, setTotalAgents] = useState(0);
   const [agentsLoading, setAgentsLoading] = useState(true);
 
@@ -105,7 +104,7 @@ const Index: React.FC = () => {
         const json = await res.json();
         if (json.success && json.data) {
           setAllTopperData(json.data);
-          setAllTransactionsData(json.data); // Also set for Navbar
+          setAllTransactionsData(json.data);
         }
       } catch (err) {
         console.error("Failed to load topper data");
@@ -192,17 +191,15 @@ const Index: React.FC = () => {
   const dedupeByUser = (transactions: any[]) => {
     console.log("🔄 Starting dedupeByUser with", transactions.length, "transactions");
 
-    // Group transactions by user
     const userMap = new Map<string, any[]>();
 
-    // First, group all transactions by user
     for (const t of transactions) {
       const mobile = t.phone || t.userPhone || "";
       const email = t.email || t.userEmail || "";
       const key = email || mobile;
 
       if (!key) {
-        continue; // Skip transactions without identifier
+        continue;
       }
 
       if (!userMap.has(key)) {
@@ -213,39 +210,33 @@ const Index: React.FC = () => {
 
     console.log(`Found ${userMap.size} unique users`);
 
-    // Now, for each user, decide which transactions to keep
     const result: any[] = [];
 
     userMap.forEach((userTransactions, key) => {
-      // Separate success and failed transactions
       const successTx = userTransactions.filter(t => t.paymentStatus === 2);
       const failedTx = userTransactions.filter(t => t.paymentStatus === 3);
       const otherTx = userTransactions.filter(t => ![2, 3].includes(t.paymentStatus));
 
-      // Always keep the latest success (if any)
       if (successTx.length > 0) {
         const latestSuccess = successTx.sort((a, b) => {
           const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
           const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
-          return db - da; // Newest first
+          return db - da;
         })[0];
         result.push(latestSuccess);
       }
 
-      // Always keep the latest failed (if any)
       if (failedTx.length > 0) {
         const latestFailed = failedTx.sort((a, b) => {
           const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
           const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
-          return db - da; // Newest first
+          return db - da;
         })[0];
         result.push(latestFailed);
       }
 
-      // Keep other status transactions
       otherTx.forEach(t => result.push(t));
 
-      // Log duplicates found
       const totalForUser = userTransactions.length;
       const keptForUser = (successTx.length > 0 ? 1 : 0) + (failedTx.length > 0 ? 1 : 0) + otherTx.length;
       if (totalForUser > keptForUser) {
@@ -253,7 +244,6 @@ const Index: React.FC = () => {
       }
     });
 
-    // Sort final result
     result.sort((a, b) => {
       const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
       const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
@@ -290,7 +280,6 @@ const Index: React.FC = () => {
       console.log(`Coupon filter "${couponFilter}": ${beforeFilter} → ${list.length}`);
     }
 
-    // Sort by date
     list.sort((a: any, b: any) => {
       const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
       const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
@@ -298,15 +287,12 @@ const Index: React.FC = () => {
     });
 
     console.log("List before dedupe:", list.length);
-
-    // ALWAYS dedupe, regardless of status filter
     const dedupedList = dedupeByUser(list);
     console.log("List after dedupe:", dedupedList.length);
 
     return dedupedList;
   }, [baseList, statusFilter, couponFilter, sortDirection]);
 
-  // Also update the transactionStats to count deduped totals
   const transactionStats = useMemo(() => {
     console.log("📊 Calculating transaction stats");
 
@@ -318,7 +304,6 @@ const Index: React.FC = () => {
       };
     }
 
-    // Use the same deduplication logic for consistent counts
     const dedupedTransactions = dedupeByUser(allTransactionsData);
 
     let successCount = 0;
@@ -336,7 +321,7 @@ const Index: React.FC = () => {
     console.log(`Transaction stats - Total: ${dedupedTransactions.length}, Success: ${successCount}, Failed: ${failedCount}`);
 
     return {
-      total: dedupedTransactions.length, // Use deduped count for consistency
+      total: dedupedTransactions.length,
       success: successCount,
       failed: failedCount
     };
@@ -349,7 +334,7 @@ const Index: React.FC = () => {
       .slice(startIndex, startIndex + PAGE_SIZE)
       .map((transaction, index) => ({
         ...transaction,
-        serialNumber: startIndex + index + 1 // Add serial number
+        serialNumber: startIndex + index + 1
       }));
   }, [filteredTransactions, page]);
 
@@ -361,14 +346,157 @@ const Index: React.FC = () => {
 
   const allFilteredTransactions = data?.data || [];
 
-  const handleCouponSearch = () => {
+  const agentStats = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        name: string;
+        mobile: string;
+        location: string;
+        count: number;
+        coupon: string;
+        uniqueUsers: Set<string>;
+      }
+    >();
+
+    const seenUsers = new Set<string>();
+
+    (allTopperData || []).forEach((t: any) => {
+      if (!t.agentName) return;
+      if (t.paymentStatus !== 2) return;
+      if (Number(t.amount) !== 5841) return;
+
+      const userName = String(t.userName || t.name || "").trim().toLowerCase();
+      const userPhone = String(t.phone || t.userPhone || "").trim();
+      const userKey = `${userName}|${userPhone}`;
+
+      if (!userName && !userPhone) return;
+
+      const agentKey = t.agentName.trim();
+
+      if (!map.has(agentKey)) {
+        map.set(agentKey, {
+          name: agentKey,
+          mobile: t.agentPhone || "—",
+          location: t.agentLocation || t.location || "—",
+          count: 0,
+          coupon: t.couponText || t.coupon_code || t.coupon || "—",
+          uniqueUsers: new Set(),
+        });
+      }
+
+      const agent = map.get(agentKey)!;
+
+      if (agent.uniqueUsers.has(userKey)) return;
+
+      if (seenUsers.has(userKey)) {
+        return;
+      }
+
+      agent.uniqueUsers.add(userKey);
+      seenUsers.add(userKey);
+      agent.count += 1;
+    });
+
+    return Array.from(map.values())
+      .map(({ uniqueUsers, ...rest }) => rest)
+      .sort((a, b) => b.count - a.count);
+  }, [allTopperData]);
+
+  const handleCouponSearch = async () => {
     if (!couponSearchCode.trim()) {
       toast.error("Please enter a coupon code");
       return;
     }
+    const couponCode = couponSearchCode.trim().toUpperCase();
     setHasSearchedCoupon(true);
-    setCouponSearchTrigger(couponSearchCode.trim().toUpperCase());
+    setCheckingCoupon(true);
+    setCouponExists(null);
+    setCouponAgentDetails(null);
+
+    try {
+      // Check if coupon exists in agents database
+      const response = await fetch(`${BASE_URL}/agents/check/${couponCode}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setCouponExists(data.exists);
+        if (data.exists && data.agent) {
+          setCouponAgentDetails(data.agent);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking coupon:", error);
+      setCouponExists(false);
+    } finally {
+      setCheckingCoupon(false);
+    }
+
+    // Still trigger the regular coupon search API for discount/plan info
+    setCouponSearchTrigger(couponCode);
   };
+
+  // Check if coupon is valid
+  const isValidCoupon = useMemo(() => {
+    // Use the result from our coupon check
+    if (couponExists !== null) {
+      return couponExists;
+    }
+
+    // Fallback: check in agentStats (agents with subscriptions)
+    if (!coupon || !coupon.coupon || couponError || !couponIsFetched) {
+      return false;
+    }
+
+    const couponCode = coupon.coupon.toUpperCase();
+    const existsInAgentStats = agentStats.some(agent =>
+      agent.coupon && agent.coupon.toUpperCase() === couponCode
+    );
+
+    return existsInAgentStats;
+  }, [coupon, couponError, couponIsFetched, agentStats, couponExists]);
+
+  // Get agent details for display
+  const displayAgentDetails = useMemo(() => {
+    // Use the agent details from the check endpoint
+    if (couponAgentDetails) {
+      return couponAgentDetails;
+    }
+
+    // Fallback: try to find in agentStats (agents with subscriptions)
+    if (!coupon || !coupon.coupon) return null;
+
+    const couponCode = coupon.coupon.toUpperCase();
+    const agent = agentStats.find(agent =>
+      agent.coupon && agent.coupon.toUpperCase() === couponCode
+    );
+
+    if (agent) {
+      return {
+        name: agent.name,
+        mobile: agent.mobile,
+        location: agent.location,
+        couponCode: agent.coupon,
+        count: agent.count
+      };
+    }
+
+    return null;
+  }, [coupon, couponAgentDetails, agentStats]);
+
+  // Effect to open modal when coupon is valid
+  useEffect(() => {
+    if (hasSearchedCoupon && couponIsFetched && !checkingCoupon) {
+      if (isValidCoupon) {
+        // Valid coupon found
+        setCouponModalOpen(true);
+        setShowCouponDropdown(false);
+      } else {
+        // Coupon not found
+        setCouponModalOpen(false);
+      }
+    }
+  }, [coupon, couponIsFetched, hasSearchedCoupon, isValidCoupon, checkingCoupon]);
 
   const handleCouponKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleCouponSearch();
@@ -377,12 +505,11 @@ const Index: React.FC = () => {
   const handleViewUsersFromSearch = (code: string) => {
     setSelectedCoupon(code);
     setCouponUsersOpen(true);
-    // Clear search after opening modal
     setShowCouponDropdown(false);
     setCouponSearchCode("");
     setHasSearchedCoupon(false);
     setCouponSearchTrigger("");
-    setCouponModalOpen(false); // Close coupon modal
+    setCouponModalOpen(false);
   };
 
   const handleCouponClick = (code: string) => {
@@ -410,7 +537,6 @@ const Index: React.FC = () => {
     }
 
     if (isAfter(startDate, endDate)) {
-      // setDateError("From date cannot be greater than To date");
       return false;
     }
 
@@ -424,7 +550,6 @@ const Index: React.FC = () => {
       setPage(1);
       refetch();
     } else {
-      // Don't update date range if invalid
       toast.error(dateError || "Invalid date range");
     }
   };
@@ -433,22 +558,16 @@ const Index: React.FC = () => {
     const map = new Map<string, number>();
 
     (allTopperData || []).forEach((t: any) => {
-      // ✅ Only successful transactions
       if (t.paymentStatus !== 2) return;
-
-      // ✅ Keep same subscription filter
       if (Number(t.amount) !== 5841) return;
 
-      // 🔥 Normalize location
       let location =
         t.agentLocation ||
         t.location ||
         "AGENTS WITHOUT LOCATION";
 
-      // Trim + uppercase
       location = String(location).trim().toUpperCase();
 
-      // Handle N/A, NULL, EMPTY
       if (
         location === "" ||
         location === "N/A" ||
@@ -462,12 +581,10 @@ const Index: React.FC = () => {
       map.set(location, (map.get(location) || 0) + 1);
     });
 
-    // 🔥 Sort by count DESC
     return Array.from(map.entries())
       .map(([location, count]) => ({ location, count }))
       .sort((a, b) => b.count - a.count);
   }, [allTopperData]);
-
 
   const locationTotalPages = Math.max(
     1,
@@ -479,78 +596,6 @@ const Index: React.FC = () => {
     locationPage * LOCATION_PAGE_SIZE
   );
 
-  const agentStats = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        name: string;
-        mobile: string;
-        location: string;
-        count: number;
-        coupon: string;
-        uniqueUsers: Set<string>; // Track unique users instead of transactions
-      }
-    >();
-
-    const seenUsers = new Set<string>(); // Global set to track users across all agents
-
-    (allTopperData || []).forEach((t: any) => {
-      // ❌ Skip invalid agent
-      if (!t.agentName) return;
-
-      // ❌ Skip failed transactions
-      if (t.paymentStatus !== 2) return;
-
-      // ❌ Coupon-only filter (5841 amount)
-      if (Number(t.amount) !== 5841) return;
-
-      // ✅ Get user identifier (username + mobile)
-      const userName = String(t.userName || t.name || "").trim().toLowerCase();
-      const userPhone = String(t.phone || t.userPhone || "").trim();
-      const userKey = `${userName}|${userPhone}`;
-
-      // Skip if userKey is invalid (no user info)
-      if (!userName && !userPhone) return;
-
-      const agentKey = t.agentName.trim();
-
-      if (!map.has(agentKey)) {
-        map.set(agentKey, {
-          name: agentKey,
-          mobile: t.agentPhone || "—",
-          location: t.agentLocation || t.location || "—",
-          count: 0,
-          coupon: t.couponText || t.coupon_code || t.coupon || "—",
-          uniqueUsers: new Set(),
-        });
-      }
-
-      const agent = map.get(agentKey)!;
-
-      // ✅ Check if this user has already been counted for ANY agent
-      const globalUserKey = `${agentKey}:${userKey}`;
-
-      // ❌ Skip if user already counted for this specific agent
-      if (agent.uniqueUsers.has(userKey)) return;
-
-      if (seenUsers.has(userKey)) {
-        // User already counted for another agent
-        return;
-      }
-
-      // ✅ Count this user for the agent
-      agent.uniqueUsers.add(userKey);
-      seenUsers.add(userKey); // Mark user as counted globally
-      agent.count += 1;
-    });
-
-    // 🔥 Return sorted list (DESC)
-    return Array.from(map.values())
-      .map(({ uniqueUsers, ...rest }) => rest)
-      .sort((a, b) => b.count - a.count);
-  }, [allTopperData]);
-
-
   const agents50 = agentStats.filter(a => a.count >= 50);
   const agents25 = agentStats.filter(
     a => a.count >= 25 && a.count < 50
@@ -558,7 +603,6 @@ const Index: React.FC = () => {
   const agents10 = agentStats.filter(
     a => a.count >= 10 && a.count < 25
   );
-  // NEW: Agents with 1-9 subscriptions
   const agents1to9 = agentStats.filter(
     a => a.count >= 1 && a.count < 10
   );
@@ -567,7 +611,7 @@ const Index: React.FC = () => {
     if (selectedTopperTier === "50") return agents50;
     if (selectedTopperTier === "25") return agents25;
     if (selectedTopperTier === "10") return agents10;
-    if (selectedTopperTier === "1-9") return agents1to9; // NEW
+    if (selectedTopperTier === "1-9") return agents1to9;
     return [];
   }, [selectedTopperTier, agents50, agents25, agents10, agents1to9]);
 
@@ -590,7 +634,7 @@ const Index: React.FC = () => {
         : selectedTopperTier === "10"
           ? agents10
           : selectedTopperTier === "1-9"
-            ? agents1to9 // NEW
+            ? agents1to9
             : [];
 
   const topperTotalPages = Math.max(
@@ -602,12 +646,6 @@ const Index: React.FC = () => {
     (topperPage - 1) * TOPPER_PAGE_SIZE,
     topperPage * TOPPER_PAGE_SIZE
   );
-
-  const topperExportData = selectedAgents.map(a => ({
-    Agent: a.name,
-    Subscriptions: a.count,
-    Tier: `${selectedTopperTier}+`,
-  }));
 
   const toggleSort = () => {
     const next: SortDirection = sortDirection === "desc" ? "asc" : "desc";
@@ -627,36 +665,18 @@ const Index: React.FC = () => {
     dateRange.start === format(getNovember10thDate(), "yyyy-MM-dd") &&
     dateRange.end === format(new Date(), "yyyy-MM-dd");
 
-  // Check if coupon is valid and exists in agents database
-  const isValidCoupon = useMemo(() => {
-    if (!coupon || !coupon.coupon || couponError || !couponIsFetched) {
-      return false;
-    }
-
-    // Check if this coupon code exists in agentStats (agents database)
-    const couponCode = coupon.coupon.toUpperCase();
-    const existsInAgents = agentStats.some(agent =>
-      agent.coupon && agent.coupon.toUpperCase() === couponCode
-    );
-
-    return existsInAgents;
-  }, [coupon, couponError, couponIsFetched, agentStats]);
-
-  // State to control dropdown visibility
-  const [showCouponDropdown, setShowCouponDropdown] = useState(false);
-
-  // State to control modal visibility (replacing popover)
-  const [couponModalOpen, setCouponModalOpen] = useState(false);
-
   const handleCouponButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowCouponDropdown(!showCouponDropdown);
-    // Clear previous search when opening dropdown
     if (!showCouponDropdown) {
       setCouponSearchCode("");
       setHasSearchedCoupon(false);
       setCouponSearchTrigger("");
-      setCouponModalOpen(false); // Close any open modal
+      setCouponModalOpen(false);
+      // Reset coupon check states
+      setCheckingCoupon(false);
+      setCouponExists(null);
+      setCouponAgentDetails(null);
     }
   };
 
@@ -673,25 +693,6 @@ const Index: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showCouponDropdown]);
 
-  // Effect to open modal when coupon is valid AND exists in agents database
-  useEffect(() => {
-    if (hasSearchedCoupon && couponIsFetched) {
-      if (isValidCoupon) {
-        // Valid coupon found in agents database
-        setCouponModalOpen(true);
-        setShowCouponDropdown(false);
-      } else if (coupon && coupon.coupon) {
-        // Coupon exists in API but NOT in agents database
-        // Show error message in dropdown
-        setCouponModalOpen(false);
-      } else {
-        // Coupon not found at all
-        setCouponModalOpen(false);
-      }
-    }
-  }, [coupon, couponIsFetched, hasSearchedCoupon, isValidCoupon]);
-
-  // Update Navbar props - IMPORTANT: Pass the correct stats
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
       <Navbar
@@ -708,7 +709,6 @@ const Index: React.FC = () => {
               🏆 Toppers Dashboard
             </h2>
 
-            {/* Updated grid to 4 columns */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* 50+ */}
               <div
@@ -755,7 +755,7 @@ const Index: React.FC = () => {
                 </div>
               </div>
 
-              {/* NEW: 1-9 Subscriptions */}
+              {/* 1-9 Subscriptions */}
               <div
                 onClick={() => {
                   setSelectedTopperTier("1-9");
@@ -891,11 +891,11 @@ const Index: React.FC = () => {
                         />
                         <Button
                           onClick={handleCouponSearch}
-                          disabled={isCouponLoading}
+                          disabled={isCouponLoading || checkingCoupon}
                           className="h-12 px-6"
                           variant="glow"
                         >
-                          {isCouponLoading ? (
+                          {(isCouponLoading || checkingCoupon) ? (
                             <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                           ) : (
                             <Search className="h-5 w-5" />
@@ -903,29 +903,24 @@ const Index: React.FC = () => {
                         </Button>
                       </div>
 
-                      {/* Show loading state */}
-                      {isCouponLoading && (
+                      {/* Show checking state */}
+                      {(isCouponLoading || checkingCoupon) && (
                         <div className="flex justify-center p-4">
                           <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                         </div>
                       )}
 
-                      {/* Show error when: */}
-                      {/* 1. No coupon found at all */}
-                      {/* 2. Coupon found but not in agents database */}
-                      {hasSearchedCoupon && couponIsFetched && !isValidCoupon && (
+                      {/* Show error when coupon not found */}
+                      {hasSearchedCoupon && couponIsFetched && !checkingCoupon && !isValidCoupon && (
                         <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
                           <div className="flex items-center gap-3">
                             <XCircle className="h-6 w-6 text-destructive" />
                             <div>
                               <h4 className="font-semibold text-sm text-destructive mb-1">
-                                {coupon && coupon.coupon ? "Invalid Coupon Code" : "Coupon Not Found"}
+                                Agent Not Found
                               </h4>
                               <p className="text-destructive/80 text-xs">
-                                {coupon && coupon.coupon
-                                  ? `The coupon code "${couponSearchTrigger}" is not associated with any agent.`
-                                  : `The coupon code "${couponSearchTrigger}" was not found.`
-                                }
+                                The coupon code "{couponSearchTrigger}" is not associated with any registered agent.
                               </p>
                             </div>
                           </div>
@@ -1052,7 +1047,7 @@ const Index: React.FC = () => {
                       {selectedTopperTier === "50" && "Agents with 50+ Subscriptions"}
                       {selectedTopperTier === "25" && "Agents with 25+ Subscriptions"}
                       {selectedTopperTier === "10" && "Agents with 10+ Subscriptions"}
-                      {selectedTopperTier === "1-9" && "Agents with 1-9 Subscriptions"} {/* NEW */}
+                      {selectedTopperTier === "1-9" && "Agents with 1-9 Subscriptions"}
                     </h2>
 
                     <span className="px-3 py-1 rounded-full bg-white text-black text-lg font-semibold">
@@ -1074,7 +1069,6 @@ const Index: React.FC = () => {
                   <table className="w-full border-collapse text-sm">
                     <thead className="sticky top-0 bg-background z-10">
                       <tr className="border-b">
-                        {/* Added S.No column */}
                         <th className="px-2 py-2 text-left font-semibold w-12">
                           S.No
                         </th>
@@ -1104,7 +1098,6 @@ const Index: React.FC = () => {
                             key={idx}
                             className="border-b last:border-0 hover:bg-muted/40 transition"
                           >
-                            {/* S.No cell */}
                             <td className="px-3 py-2 text-left text-muted-foreground font-medium">
                               {serialNumber}
                             </td>
@@ -1130,7 +1123,7 @@ const Index: React.FC = () => {
                       {paginatedToppers.length === 0 && (
                         <tr>
                           <td
-                            colSpan={6} // Updated colSpan to 6 for new column
+                            colSpan={6}
                             className="text-center text-muted-foreground py-8"
                           >
                             No agents found
@@ -1155,7 +1148,7 @@ const Index: React.FC = () => {
         </div>
       </main>
 
-      {/* Coupon Details Modal - Replaces Popover */}
+      {/* Coupon Details Modal */}
       {couponModalOpen && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
@@ -1225,7 +1218,7 @@ const Index: React.FC = () => {
                 </div>
               </div>
 
-              {coupon?.agent && coupon?.agent.name && (
+              {displayAgentDetails && (
                 <div className="p-4 rounded-lg bg-muted/50 space-y-3">
                   <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                     Agent Details
@@ -1233,20 +1226,34 @@ const Index: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="text-xs text-muted-foreground">Name</div>
-                      <div className="text-sm font-medium">{coupon.agent.name}</div>
+                      <div className="text-sm font-medium">{displayAgentDetails.name || "—"}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Phone</div>
-                      <div className="text-sm font-medium">{coupon.agent.phone || "—"}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <div className="text-xs text-muted-foreground">Email</div>
-                      <div className="text-sm font-medium truncate">{coupon.agent.email || "—"}</div>
+                      <div className="text-sm font-medium">{displayAgentDetails.mobile || "—"}</div>
                     </div>
                     <div className="col-span-2">
                       <div className="text-xs text-muted-foreground">Location</div>
-                      <div className="text-sm font-medium">{coupon.agent.location || "—"}</div>
+                      <div className="text-sm font-medium">{displayAgentDetails.location || "—"}</div>
                     </div>
+                    <div className="col-span-2">
+                      <div className="text-xs text-muted-foreground">Coupon Status</div>
+                      <div className="text-sm font-medium">
+                        {displayAgentDetails.handedOver && displayAgentDetails.generated
+                          ? "Active"
+                          : displayAgentDetails.handedOver
+                            ? "Handed Over"
+                            : displayAgentDetails.generated
+                              ? "Generated"
+                              : "Unknown"}
+                      </div>
+                    </div>
+                    {displayAgentDetails.count > 0 && (
+                      <div className="col-span-2">
+                        <div className="text-xs text-muted-foreground">Subscriptions</div>
+                        <div className="text-sm font-bold text-primary">{displayAgentDetails.count}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1280,4 +1287,5 @@ const Index: React.FC = () => {
     </div>
   );
 };
+
 export default Index;
