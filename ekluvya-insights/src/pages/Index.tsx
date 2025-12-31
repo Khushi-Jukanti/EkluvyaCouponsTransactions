@@ -362,11 +362,14 @@ const Index: React.FC = () => {
     const seenUsers = new Set<string>();
 
     (allTopperData || []).forEach((t: any) => {
-      if (!t.agentName) return;
-      if (t.paymentStatus !== 2) return;
+      // Skip if no agent name or if agent name indicates "No Agent"
+      if (!t.agentName ||
+        String(t.agentName).trim().toLowerCase() === "no agent" ||
+        String(t.agentName).trim() === "") {
+        return; // Skip this transaction
+      }
 
-      // REMOVE or COMMENT OUT this line to include ALL successful transactions
-      // if (Number(t.amount) !== 5841) return;
+      if (t.paymentStatus !== 2) return;
 
       const userName = String(t.userName || t.name || "").trim().toLowerCase();
       const userPhone = String(t.phone || t.userPhone || "").trim();
@@ -590,8 +593,12 @@ const Index: React.FC = () => {
     (allTopperData || []).forEach((t: any) => {
       if (t.paymentStatus !== 2) return;
 
-      // Remove or update this line to match agentStats
-      // if (Number(t.amount) !== 5841) return;
+      // Skip transactions without agent name
+      if (!t.agentName ||
+        String(t.agentName).trim().toLowerCase() === "no agent" ||
+        String(t.agentName).trim() === "") {
+        return;
+      }
 
       let location =
         t.agentLocation ||
