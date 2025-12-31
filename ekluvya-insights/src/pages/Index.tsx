@@ -364,7 +364,9 @@ const Index: React.FC = () => {
     (allTopperData || []).forEach((t: any) => {
       if (!t.agentName) return;
       if (t.paymentStatus !== 2) return;
-      if (Number(t.amount) !== 5841) return;
+
+      // REMOVE or COMMENT OUT this line to include ALL successful transactions
+      // if (Number(t.amount) !== 5841) return;
 
       const userName = String(t.userName || t.name || "").trim().toLowerCase();
       const userPhone = String(t.phone || t.userPhone || "").trim();
@@ -402,6 +404,34 @@ const Index: React.FC = () => {
       .map(({ uniqueUsers, ...rest }) => rest)
       .sort((a, b) => b.count - a.count);
   }, [allTopperData]);
+
+  // After agentStats is calculated, add this:
+  useEffect(() => {
+    console.log("📊 Agent Stats Debug:");
+    console.log(`Total agents in stats: ${agentStats.length}`);
+
+    // Search for agent with YPHA7196
+    const targetAgent = agentStats.find(agent =>
+      agent.coupon && agent.coupon.toUpperCase().includes("YPHA7196")
+    );
+
+    if (targetAgent) {
+      console.log(`✅ Found agent with coupon YPHA7196:`, targetAgent);
+      console.log(`Name: ${targetAgent.name}, Count: ${targetAgent.count}`);
+    } else {
+      console.log(`❌ Agent with coupon YPHA7196 NOT FOUND in stats`);
+
+      // Check all transactions for this coupon
+      const transactionsWithCoupon = allTopperData.filter(t =>
+        (t.couponText || t.coupon_code || t.coupon || "").toUpperCase().includes("YPHA7196")
+      );
+      console.log(`Transactions with YPHA7196: ${transactionsWithCoupon.length}`);
+
+      if (transactionsWithCoupon.length > 0) {
+        console.log("Sample transactions:", transactionsWithCoupon.slice(0, 3));
+      }
+    }
+  }, [agentStats]);
 
   const handleCouponSearch = async () => {
     if (!couponSearchCode.trim()) {
@@ -559,7 +589,9 @@ const Index: React.FC = () => {
 
     (allTopperData || []).forEach((t: any) => {
       if (t.paymentStatus !== 2) return;
-      if (Number(t.amount) !== 5841) return;
+
+      // Remove or update this line to match agentStats
+      // if (Number(t.amount) !== 5841) return;
 
       let location =
         t.agentLocation ||
