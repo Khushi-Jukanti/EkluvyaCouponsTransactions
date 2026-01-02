@@ -44,9 +44,11 @@ const parseAnyDate = (raw?: string | number | Date): Date => {
 };
 
 // Helper function to create November 10th date for current year
+// Helper function to create November 10th date for previous year
 const getNovember10thDate = (): Date => {
-  const currentYear = new Date().getFullYear();
-  return new Date(currentYear, 10, 10); // Month is 0-indexed, so 10 = November
+  const today = new Date();
+  const previousYear = today.getFullYear() - 1;
+  return new Date(previousYear, 10, 10); // Month is 0-indexed, so 10 = November
 };
 
 const Index: React.FC = () => {
