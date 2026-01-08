@@ -21,6 +21,7 @@ router.get("/profile", verifyToken, async (req, res) => {
       mobile: agent.mobile || "N/A",
       email: agent.email || "",
       couponCode: agent.couponCode || "",
+      Coupon_code_url: agent.Coupon_code_url || "",
       role: agent.role || "agent",
       firstLogin: agent.firstLogin,
       forcePasswordChange: agent.forcePasswordChange,

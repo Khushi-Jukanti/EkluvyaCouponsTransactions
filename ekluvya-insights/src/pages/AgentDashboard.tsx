@@ -20,8 +20,10 @@ import {
     Briefcase,
     Plane,
     AlertCircle,
-    RefreshCw
+    RefreshCw,
+    Copy, QrCode, Check, Link
 } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import api from "@/lib/api";
 import AgentNavbar from "@/components/AgentNavbar";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,7 @@ interface Agent {
     location: string;
     couponCode: string;
     email?: string;
+    Coupon_code_url?: string;
 }
 
 interface Subscription {
@@ -206,6 +209,8 @@ const AgentDashboard = () => {
     const [retryCount, setRetryCount] = useState(0);
     const [isFetching, setIsFetching] = useState(false);
     const [useMockData, setUseMockData] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [showQR, setShowQR] = useState(false);
 
     // Refs for request cancellation and debouncing
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -597,6 +602,126 @@ const AgentDashboard = () => {
             <AgentNavbar agentName={agent?.name} />
 
             <main className="container mx-auto px-4 py-8">
+                <Card className="mb-8">
+                    <CardContent className="p-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                    Welcome back, {agent?.name || "Agent"}!
+                                </h1>
+                                <p className="text-gray-600 dark:text-gray-400 mt-2">
+                                    Manage your subscriptions and track your progress towards amazing gifts!
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <div className="bg-primary/10 text-primary px-4 py-3 rounded-xl">
+                                    <div className="text-sm font-medium">Coupon Code</div>
+                                    <div className="text-xl font-bold tracking-wider font-mono">
+                                        {agent?.couponCode || "N/A"}
+                                    </div>
+                                </div>
+
+                                <div className="bg-green-500/10 text-green-600 px-4 py-3 rounded-xl">
+                                    <div className="text-sm font-medium">Total Users</div>
+                                    <div className="text-xl font-bold">
+                                        {pagination.totalCount}
+                                    </div>
+                                    {useMockData && (
+                                        <div className="text-xs text-yellow-600 mt-1">Demo</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+                {agent?.Coupon_code_url && (
+                    <Card className="mb-8 border-2 border-primary/20 from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+                        <CardContent className="p-6">
+                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <Link className="h-6 w-6 text-primary" />
+                                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                                            Your Personalized Subscription Link and QR Code
+                                        </h2>
+                                    </div>
+                                    <p className="text-gray-700 dark:text-gray-300 mb-4">
+                                        SHARE THIS LINK or SCAN QR CODE to subscribe <span style={{ color: "darkgreen", font: "bold" }}>without entering coupon code!</span>
+                                    </p>
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                        <code className="bg-white dark:bg-gray-800 px-4 py-3 rounded-lg font-mono text-sm break-all border border-gray-300 dark:border-gray-600 flex-1 w-full">
+                                            {agent.Coupon_code_url}
+                                        </code>
+                                        <Button
+                                            variant="default"
+                                            size="lg"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(agent.Coupon_code_url!);
+                                                setCopied(true);
+                                                setTimeout(() => setCopied(false), 2000);
+                                            }}
+                                            className="flex items-center gap-2 min-w-[120px]"
+                                        >
+                                            {copied ? (
+                                                <>
+                                                    <Check className="h-4 w-4" />
+                                                    Copied!
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Copy className="h-4 w-4" />
+                                                    Copy Link
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+                                    {/* <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                                        <li className="flex items-center gap-2">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                            No need to manually enter coupon code
+                                        </li>
+                                        <li className="flex items-center gap-2">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                            Direct payment with your discount applied
+                                        </li>
+                                        <li className="flex items-center gap-2">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                            You get credit automatically
+                                        </li>
+                                    </ul> */}
+                                </div>
+
+                                <div className="flex flex-col items-center gap-4">
+                                    {/* <Button
+                                        variant="outline"
+                                        size="lg"
+                                        onClick={() => setShowQR(!showQR)}
+                                        className="flex items-center gap-3 px-6"
+                                    >
+                                        <QrCode className="h-5 w-5" />
+                                        {showQR ? "Hide QR Code" : "Generate QR Code"}
+                                    </Button> */}
+
+                                    {/* {showQR && ( */}
+                                    <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                                        <QRCodeCanvas
+                                            value={agent.Coupon_code_url}
+                                            size={200}
+                                            level="H"
+                                            fgColor="#000000"
+                                            bgColor="#ffffff"
+                                        />
+                                        <p className="text-center text-xs text-gray-600 dark:text-gray-400 mt-3">
+                                            Your Personalized QR code <br /> Coupon Code Applied : {agent?.couponCode || "N/A"}
+                                        </p>
+                                    </div>
+                                    {/* )} */}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
                 {/* REFRESH BUTTON */}
                 {/* <div className="flex justify-end mb-4">
                     <Button
@@ -739,39 +864,7 @@ const AgentDashboard = () => {
                 </Card>
 
                 {/* WELCOME CARD */}
-                <Card className="mb-8">
-                    <CardContent className="p-6">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                                    Welcome back, {agent?.name || "Agent"}!
-                                </h1>
-                                <p className="text-gray-600 dark:text-gray-400 mt-2">
-                                    Manage your subscriptions and track your progress towards amazing gifts!
-                                </p>
-                            </div>
 
-                            <div className="flex items-center gap-4">
-                                <div className="bg-primary/10 text-primary px-4 py-3 rounded-xl">
-                                    <div className="text-sm font-medium">Coupon Code</div>
-                                    <div className="text-xl font-bold tracking-wider font-mono">
-                                        {agent?.couponCode || "N/A"}
-                                    </div>
-                                </div>
-
-                                <div className="bg-green-500/10 text-green-600 px-4 py-3 rounded-xl">
-                                    <div className="text-sm font-medium">Total Users</div>
-                                    <div className="text-xl font-bold">
-                                        {pagination.totalCount}
-                                    </div>
-                                    {useMockData && (
-                                        <div className="text-xs text-yellow-600 mt-1">Demo</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
 
                 {/* GIFT TIERS DISPLAY */}
                 <div className="mb-8">

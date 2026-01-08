@@ -8,6 +8,7 @@ const agentSchema = new mongoose.Schema({
     email: { type: String, sparse: true },
     password: String,
     couponCode: String,
+    Coupon_code_url : String,
     role: {
         type: String,
         enum: ['agent', 'admin'],

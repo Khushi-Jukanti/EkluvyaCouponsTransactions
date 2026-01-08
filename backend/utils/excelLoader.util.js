@@ -29,6 +29,7 @@ const loadAgentCoupons = () => {
         endDate: row['End Date'],
         handedOver: row['Handed over'] === 'Yes',
         generated: row['Generated in System'] === 'Yes',
+        couponUrl: row['Coupon Code URL']?.trim() || '',
       };
     });
 
