@@ -11,7 +11,7 @@ const agentSchema = new mongoose.Schema({
     Coupon_code_url : String,
     role: {
         type: String,
-        enum: ['agent', 'admin'],
+        enum: ['admin', 'accountant', 'agent'],
         default: 'agent'
     },
     firstLogin: { type: Boolean, default: true },

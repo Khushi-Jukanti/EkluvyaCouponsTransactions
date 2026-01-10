@@ -43,10 +43,11 @@
 //   end: string;
 // }
 
-
+export type PaymentStatus = 'pending' | 'paid';
 
 // types.ts
 export interface Transaction {
+  // Existing fields
   transactionId?: string;
   userName: string;
   phone: string;
@@ -57,8 +58,21 @@ export interface Transaction {
   date_ist: string;
   agentName: string;
   agentPhone: string;
-  agentLocation: string;     
+  agentLocation: string;
   paymentStatusText?: string;    // "Success" or "Failed"
+
+  // Add missing fields from the backend
+  _id?: string;  // MongoDB ID
+  createdAt?: string;  // Creation date
+  coupon_code?: string;  // Alternative coupon field
+  coupon?: string;  // Alternative coupon field
+
+  // Add new payment management fields
+  agent_payment_status?: PaymentStatus;
+  agent_payment_mode?: string;
+  agent_payment_date?: string | Date;
+  agent_payment_updated_by?: string;
+  agent_payment_updated_at?: string;
 }
 
 export interface TransactionsResponse {
@@ -68,7 +82,6 @@ export interface TransactionsResponse {
   page: number;
   pages: number;
   data: Transaction[];   // ← THIS IS WHAT YOUR BACKEND RETURNS!
-  // todayRevenue?: number;  ← Not returned yet, remove or keep optional
 }
 
 export interface CouponDetails {
@@ -105,4 +118,10 @@ export interface CouponTransactionsResponse {
 export interface DateRange {
   start: string;
   end: string;
+}
+
+export interface PaymentData {
+  agent_payment_status: PaymentStatus;
+  agent_payment_mode: string;
+  agent_payment_date: string;
 }

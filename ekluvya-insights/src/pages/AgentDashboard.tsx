@@ -57,6 +57,11 @@ interface Subscription {
     formattedDate: string;
     formattedTime: string;
     subscriptionType: string;
+    // Payment fields from admin
+    agent_payment_status?: string; // 'pending' or 'completed'
+    agent_payment_date?: string;
+    agent_payment_mode?: string;
+    agent_payment_updated_at?: string;
 }
 
 interface PaginationData {
@@ -238,6 +243,28 @@ const AgentDashboard = () => {
             }
         };
         fetchProfile();
+    }, []);
+
+    // Process subscription data to ensure defaults
+    const processSubscriptionData = useCallback((data: Subscription[]) => {
+        return data.map(sub => {
+            // For successful transactions: default to pending if not set by admin
+            if (sub.paymentStatusText.toLowerCase() === 'success') {
+                return {
+                    ...sub,
+                    // If admin hasn't set status, default to pending
+                    agent_payment_status: sub.agent_payment_status || 'pending',
+                    // Only show date if status is 'completed'
+                    agent_payment_date: sub.agent_payment_status === 'completed' ? sub.agent_payment_date : undefined
+                };
+            }
+            // For failed transactions: don't show any payment info
+            return {
+                ...sub,
+                agent_payment_status: undefined,
+                agent_payment_date: undefined
+            };
+        });
     }, []);
 
     // Calculate gift eligibility
@@ -513,6 +540,21 @@ const AgentDashboard = () => {
         }).format(amount);
     };
 
+    const formatDisplayDate = (dateString?: string) => {
+        if (!dateString) return "—";
+
+        try {
+            return new Date(dateString).toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric"
+            });
+        } catch (error) {
+            console.error("Error formatting date:", error);
+            return "—";
+        }
+    };
+
     // Download data as CSV
     const handleDownloadCSV = () => {
         const dataToExport = searchTerm ? filteredSubscriptions : subscriptions;
@@ -561,15 +603,6 @@ const AgentDashboard = () => {
         }, 300);
     }, [fetchSubscriptions]);
 
-    // Manual refresh
-    const handleManualRefresh = useCallback(() => {
-        if (!isFetching) {
-            console.log("Manual refresh triggered");
-            setRetryCount(0);
-            fetchSubscriptions(pagination.currentPage, filterStatus);
-        }
-    }, [isFetching, pagination.currentPage, filterStatus, fetchSubscriptions]);
-
     // Retry backend connection
     const retryBackendConnection = useCallback(() => {
         setRetryCount(0);
@@ -595,6 +628,51 @@ const AgentDashboard = () => {
         if (!nextTier) return null;
 
         return `Hurry up! Get ${subscriptionsRemaining} more subscription(s) to achieve ${nextTier.gift}!`;
+    };
+
+    // Render payment status cell
+    const renderPaymentStatus = (subscription: Subscription) => {
+        // For failed transactions, show nothing
+        if (subscription.paymentStatusText.toLowerCase() === 'failed') {
+            return <span className="text-sm text-gray-400 italic">—</span>;
+        }
+
+        // For successful transactions
+        if (subscription.agent_payment_status === 'completed') {
+            return (
+                <Badge className="bg-green-100 text-green-800 hover:bg-green-100 border border-green-200">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    Paid
+                </Badge>
+            );
+        }
+
+        // Default to pending for successful transactions
+        return (
+            <Badge variant="outline" className="text-yellow-700 border-yellow-300 bg-yellow-50">
+                Pending
+            </Badge>
+        );
+    };
+
+    // Render payment date cell
+    const renderPaymentDate = (subscription: Subscription) => {
+        // For failed transactions, show nothing
+        if (subscription.paymentStatusText.toLowerCase() === 'failed') {
+            return <span className="text-sm text-gray-400 italic">—</span>;
+        }
+
+        // Only show date if payment is completed
+        if (subscription.agent_payment_status === 'completed' && subscription.agent_payment_date) {
+            return (
+                <span className="text-sm text-gray-900 dark:text-white">
+                    {formatDisplayDate(subscription.agent_payment_date)}
+                </span>
+            );
+        }
+
+        // For pending successful transactions
+        return <span className="text-sm text-gray-400 italic">—</span>;
     };
 
     return (
@@ -722,19 +800,6 @@ const AgentDashboard = () => {
                         </CardContent>
                     </Card>
                 )}
-                {/* REFRESH BUTTON */}
-                {/* <div className="flex justify-end mb-4">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleManualRefresh}
-                        disabled={isFetching}
-                        className="flex items-center gap-2"
-                    >
-                        <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-                        {isFetching ? 'Fetching...' : 'Refresh Data'}
-                    </Button>
-                </div> */}
 
                 {/* ERROR ALERT */}
                 {fetchError && (
@@ -863,9 +928,6 @@ const AgentDashboard = () => {
                     </CardContent>
                 </Card>
 
-                {/* WELCOME CARD */}
-
-
                 {/* GIFT TIERS DISPLAY */}
                 <div className="mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -941,11 +1003,6 @@ const AgentDashboard = () => {
                                     <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
                                         {stats.successCount}
                                     </p>
-                                    {/* {eligibleTier && !useMockData && (
-                                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                            Eligible for {eligibleTier.gift} 🎁
-                                        </p>
-                                    )} */}
                                 </div>
                                 <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
                                     <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
@@ -969,11 +1026,6 @@ const AgentDashboard = () => {
                                     <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
                                         {stats.failedCount}
                                     </p>
-                                    {/* {nextTier && !useMockData && subscriptionsRemaining > 0 && (
-                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                            Need {subscriptionsRemaining} more for {nextTier.gift}
-                                        </p>
-                                    )} */}
                                 </div>
                                 <div className="h-12 w-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
                                     <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
@@ -1070,6 +1122,12 @@ const AgentDashboard = () => {
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-white dark:text-white uppercase tracking-wider">
                                                     Status
                                                 </th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-white dark:text-white uppercase tracking-wider">
+                                                    Payment Status
+                                                </th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-white dark:text-white uppercase tracking-wider">
+                                                    Payment Date
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1151,6 +1209,12 @@ const AgentDashboard = () => {
                                                             {sub.paymentStatusText}
                                                         </Badge>
                                                     </td>
+                                                    <td className="px-6 py-4">
+                                                        {renderPaymentStatus(sub)}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {renderPaymentDate(sub)}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1216,7 +1280,7 @@ const AgentDashboard = () => {
                                                 <div className="flex items-center gap-2 mx-2">
                                                     <span className="text-sm text-gray-600 dark:text-gray-400">Page</span>
                                                     <Input
-                                                        type="number"
+                                                        type="text"
                                                         min="1"
                                                         max={pagination.totalPages}
                                                         value={pageInput}

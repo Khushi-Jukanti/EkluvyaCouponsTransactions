@@ -185,7 +185,8 @@ router.post("/forgot-password/send-otp", async (req, res) => {
     }
 
     // Check if agent exists
-    const agent = await Agent.findOne({ mobile });
+    const Agent = await getAgentModel();
+const agent = await Agent.findOne({ mobile });
 
     if (!agent) {
       return res.status(404).json({
@@ -248,7 +249,8 @@ router.post("/forgot-password/verify-otp", async (req, res) => {
       });
     }
 
-    const agent = await Agent.findOne({ mobile });
+    const Agent = await getAgentModel();
+const agent = await Agent.findOne({ mobile });
 
     if (!agent) {
       return res.status(404).json({
@@ -323,7 +325,8 @@ router.post("/forgot-password/reset", async (req, res) => {
       });
     }
 
-    const agent = await Agent.findOne({ mobile });
+    const Agent = await getAgentModel();
+const agent = await Agent.findOne({ mobile });
 
     if (!agent) {
       return res.status(404).json({

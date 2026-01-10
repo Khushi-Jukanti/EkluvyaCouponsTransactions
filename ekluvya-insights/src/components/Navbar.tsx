@@ -1,9 +1,10 @@
-import { Moon, Sun, Tag, LogOut } from "lucide-react";
+import { Moon, Sun, Tag, LogOut, Eye, Edit, Shield, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
 import { BASE_URL } from "@/config/api";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 
 interface NavbarProps {
   totalTransactions: number;
@@ -17,18 +18,31 @@ const Navbar = ({
   isLoading = false,
 }: NavbarProps) => {
   const navigate = useNavigate();
-  const [isDark, setIsDark] = useState(false); // Changed to false for light theme default
+  const [isDark, setIsDark] = useState(false);
   const [completeData, setCompleteData] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'accountant' | null>(null);
+  const [userName, setUserName] = useState<string>('');
+
+  // Fetch user info from localStorage on component mount
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const storedRole = localStorage.getItem('role') as 'admin' | 'accountant' | null;
+    const storedName = localStorage.getItem('userName') || '';
+
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    setUserRole(storedRole || 'admin');
+    setUserName(storedName);
+  }, [navigate]);
 
   // Set light theme as default on component mount
   useEffect(() => {
-    // Remove dark class if it exists
     document.documentElement.classList.remove("dark");
-
-    // Optional: Add light class if your theme system supports it
-    // document.documentElement.classList.add("light");
   }, []);
 
   // Fetch ALL transactions from the beginning OR use props
@@ -36,11 +50,9 @@ const Navbar = ({
     const fetchCompleteData = async () => {
       try {
         setDataLoading(true);
-        // If we have allTransactions from props, use them
         if (allTransactions && allTransactions.length > 0) {
           setCompleteData(allTransactions);
         } else {
-          // Otherwise fetch from API
           const response = await fetch(`${BASE_URL}/transactions?limit=100000`);
           const data = await response.json();
 
@@ -106,17 +118,14 @@ const Navbar = ({
   const parseDate = (t: any): Date => {
     if (!t) return new Date(0);
 
-    // Try all possible date fields
     const dateStr = t.date_ist || t.created_at || t.createdAt || t.dateTime || t.date || t.createdDate || "";
 
     if (!dateStr) return new Date(0);
 
-    // If it's already a Date object
     if (dateStr instanceof Date) {
       return isNaN(dateStr.getTime()) ? new Date(0) : dateStr;
     }
 
-    // If it's a number (timestamp)
     if (typeof dateStr === 'number') {
       const date = new Date(dateStr);
       return isNaN(date.getTime()) ? new Date(0) : date;
@@ -124,11 +133,10 @@ const Navbar = ({
 
     const str = String(dateStr).trim();
 
-    // Try DD-MM-YYYY HH:mm:ss format (most common in your screenshot)
+    // Try DD-MM-YYYY HH:mm:ss format
     const istMatch = str.match(/(\d{1,2})-(\d{1,2})-(\d{4}) (\d{1,2}):(\d{1,2}):(\d{1,2})/);
     if (istMatch) {
       const [_, day, month, year, hour, minute, second] = istMatch;
-      // Create date - Month is 0-indexed
       const date = new Date(
         parseInt(year),
         parseInt(month) - 1,
@@ -164,7 +172,6 @@ const Navbar = ({
       }
     } catch { }
 
-    // Return epoch for invalid dates
     return new Date(0);
   };
 
@@ -175,7 +182,7 @@ const Navbar = ({
   };
 
   // Fixed start date: November 10, 2025
-  const FIXED_START_DATE = new Date(2025, 10, 10); // November 10, 2025 (month is 0-indexed, 10 = November)
+  const FIXED_START_DATE = new Date(2025, 10, 10);
 
   // NEW: Deduplication logic for a specific transaction list
   const dedupeTransactions = (transactions: any[]): any[] => {
@@ -184,17 +191,14 @@ const Navbar = ({
     for (const t of transactions) {
       const mobile = String(t.phone || t.userPhone || t.mobile || "").trim();
       const email = String(t.email || t.userEmail || "").trim().toLowerCase();
-
-      // Use mobile if available, otherwise email
       const key = mobile || email;
 
-      if (!key) continue; // Skip if no identifier
+      if (!key) continue;
 
       const existing = map.get(key);
       if (!existing) {
         map.set(key, t);
       } else {
-        // Keep the transaction with the latest date
         const existingDate = parseDate(existing);
         const currentDate = parseDate(t);
 
@@ -210,11 +214,10 @@ const Navbar = ({
   // Function to filter transactions from Nov 10, 2025 to today
   const filterByDateRange = (transactions: any[]): any[] => {
     const today = new Date();
-    today.setHours(23, 59, 59, 999); // End of today
+    today.setHours(23, 59, 59, 999);
 
     return transactions.filter(t => {
       const date = parseDate(t);
-      // Check if date is valid and within range
       if (isNaN(date.getTime()) || date.getTime() === 0) return false;
       return date >= FIXED_START_DATE && date <= today;
     });
@@ -382,55 +385,39 @@ const Navbar = ({
     };
   }, [completeData, dataLoading]);
 
-  // Debug: Log the counts
-  useEffect(() => {
-    if (!dataLoading) {
-      console.log("=== NAVBAR DEBUG ===");
-      console.log("Complete data count:", completeData.length);
-      console.log("All time transactions (filtered & deduped):", allTimeCount);
-      console.log("All time success:", allTimeSuccessCount);
-      console.log("All time failed:", allTimeFailedCount);
-      console.log("Today count:", todayCount);
-      console.log("Today success:", todaySuccessCount);
-      console.log("Today failed:", todayFailedCount);
-      console.log("Fixed start date:", FIXED_START_DATE.toDateString());
-      console.log("Today's date:", new Date().toDateString());
-      console.log("===================");
-    }
-  }, [dataLoading, completeData.length, allTimeCount, allTimeSuccessCount, allTimeFailedCount, todayCount, todaySuccessCount, todayFailedCount]);
-
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex h-20 items-center justify-between px-4">
-
-        {/* LOGO */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.reload();
-              }}
-            >
-              <img
-                src="/favicon.png"
-                alt="Ekluvya Admin Logo"
-                className="h-16 w-16 object-contain"
-              />
-            </a>
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">Ekluvya Admin</h1>
-            <p className="text-xs text-muted-foreground">
-              Subscription Management
-            </p>
+        {/* LEFT SECTION: LOGO AND USER INFO */}
+        <div className="flex items-center gap-4">
+          {/* LOGO */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.reload();
+                }}
+              >
+                <img
+                  src="/favicon.png"
+                  alt="Ekluvya Admin Logo"
+                  className="h-16 w-16 object-contain"
+                />
+              </a>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">Ekluvya Admin</h1>
+              <p className="text-xs text-muted-foreground">
+                Subscription Management
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* COUNTS */}
+        {/* MIDDLE SECTION: COUNTS */}
         <div className="flex items-center gap-8">
-
           {/* ALL TIME COUNTS (Nov 10, 2025 to Today - Independent of filter) */}
           <div className="flex items-center gap-8">
             <CountCard
@@ -484,16 +471,32 @@ const Navbar = ({
               color="text-red-600 dark:text-red-400"
             />
           </div>
+        </div>
+
+        {/* RIGHT SECTION: CONTROLS */}
+        <div className="flex items-center gap-3">
+          {/* ROLE INDICATOR FOR MOBILE */}
+          {userRole && (
+            <div className="md:hidden">
+              <Badge
+                variant={userRole === 'accountant' ? "default" : "secondary"}
+                className="text-xs h-5"
+              >
+                {userRole === 'accountant' ? 'Acc' : 'Admin'}
+              </Badge>
+            </div>
+          )}
 
           {/* THEME AND LOGOUT BUTTONS */}
-          <div className="flex items-center gap-2 border-l border-border/40 pl-6">
+          <div className="flex items-center gap-2 border-l border-border/40 pl-3">
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
               title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+              className="h-9 w-9"
             >
-              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
             <Button
@@ -502,12 +505,12 @@ const Navbar = ({
               onClick={handleLogout}
               disabled={logoutLoading}
               title="Logout"
-              className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30"
+              className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30"
             >
               {logoutLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               ) : (
-                <LogOut className="h-5 w-5" />
+                <LogOut className="h-4 w-4" />
               )}
             </Button>
           </div>

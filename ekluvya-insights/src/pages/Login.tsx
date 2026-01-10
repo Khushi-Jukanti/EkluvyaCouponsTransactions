@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 
 const Login = () => {
     const navigate = useNavigate();
@@ -61,10 +62,9 @@ const Login = () => {
     const handleLogin = async () => {
         setLoading(true);
         try {
-            // Clean input
             const cleanedInput = usernameOrMobile.trim();
 
-            // Check if input looks like email (for admin) or mobile (for agent)
+            // Check if input looks like email
             const isEmail = cleanedInput.includes('@');
 
             if (!isEmail) {
@@ -77,13 +77,12 @@ const Login = () => {
                         couponCode: password
                     };
 
-                    console.log("Agent login payload:", agentPayload);
-
                     const { data: agentData } = await api.post("/auth/agent/login", agentPayload);
                     console.log("Agent login successful:", agentData);
 
                     localStorage.setItem("token", agentData.token);
                     localStorage.setItem("role", agentData.role);
+                    localStorage.setItem("userName", agentData.user?.name || '');
 
                     if (agentData.forcePasswordChange) {
                         navigate("/change-password");
@@ -91,46 +90,47 @@ const Login = () => {
                         navigate("/agent/dashboard");
                     }
                     return;
-                } catch (agentError: any) {
+                } catch (agentError) {
                     console.log("Agent login failed:", agentError.response?.data?.message || agentError.message);
-                    // Continue to try admin login
                 }
             }
 
-            // Try admin login (email/username + password)
-            console.log("Trying admin login");
+            // Try admin/accountant login (email/username + password)
+            console.log("Trying admin/accountant login");
             try {
                 const adminPayload = {
                     username: cleanedInput,
                     password
                 };
 
-                console.log("Admin login payload:", adminPayload);
-
                 const { data: adminData } = await api.post("/auth/admin/login", adminPayload);
-                console.log("Admin login successful:", adminData);
+                console.log("Admin/Accountant login successful:", adminData);
 
+                // Store user data
                 localStorage.setItem("token", adminData.token);
-                localStorage.setItem("role", adminData.role);
+                localStorage.setItem("role", adminData.role);  // This will be "admin" or "accountant"
+                localStorage.setItem("userName", adminData.user?.name || '');
 
-                if (adminData.forcePasswordChange) {
-                    navigate("/change-password");
+                // Show welcome message based on role
+                if (adminData.role === 'accountant') {
+                    toast.success(`Welcome back, ${adminData.user?.name || ''}!`, {
+                        description: 'You have edit access to payment statuses',
+                    });
                 } else {
-                    navigate("/admin/dashboard");
+                    toast.success(`Welcome back, ${adminData.user?.name || ''}!`, {
+                        description: 'You have view-only access',
+                    });
                 }
+
+                // Redirect to admin dashboard for both roles
+                navigate("/admin/dashboard");
                 return;
-            } catch (adminError: any) {
-                console.log("Admin login failed:", adminError.response?.data?.message || adminError.message);
-
-                // Show appropriate error message
-                if (adminError.response?.status === 401) {
-                    throw new Error("Invalid username/email or password");
-                } else {
-                    throw new Error("Login failed. Please check your credentials.");
-                }
+            } catch (adminError) {
+                console.log("Admin/Accountant login failed:", adminError.response?.data?.message || adminError.message);
+                throw new Error(adminError.response?.data?.message || "Login failed. Please check your credentials.");
             }
 
-        } catch (err: any) {
+        } catch (err) {
             alert(err.message || "Login failed. Please check your credentials.");
         } finally {
             setLoading(false);

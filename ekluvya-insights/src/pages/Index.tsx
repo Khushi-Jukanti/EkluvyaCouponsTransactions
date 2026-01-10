@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users, XCircle, X } from "lucide-react";
+import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -11,51 +11,30 @@ import ExportButton from "@/components/ExportButton";
 import CouponUsersModal from "@/components/CouponUsersModal";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCouponSearch } from "@/hooks/useCouponSearch";
-import { DateRange } from "@/types";
+import { DateRange, PaymentData, PaymentStatus } from "@/types";
 import { toast } from "sonner";
 import { format, parse, parseISO, isAfter, isValid } from "date-fns";
 import { BASE_URL } from "@/config/api";
 import { Plane, Briefcase, Shirt, User } from "lucide-react";
+import { jwtDecode } from "jwt-decode";
+import { Badge } from "@/components/ui/badge";
 
 const TOPPER_PAGE_SIZE = 10;
 const LOCATION_PAGE_SIZE = 15;
 const PAGE_SIZE = 50;
 type SortDirection = "desc" | "asc";
 
-const parseAnyDate = (raw?: string | number | Date): Date => {
-  if (!raw) return new Date(0);
-  if (raw instanceof Date) return raw;
-  if (typeof raw === "number") return new Date(raw);
-
-  const s = String(raw).trim();
-
-  try {
-    const d = parse(s, "dd-MM-yyyy HH:mm:ss", new Date());
-    if (!isNaN(d.getTime())) return d;
-  } catch { }
-
-  try {
-    const d = parseISO(s);
-    if (!isNaN(d.getTime())) return d;
-  } catch { }
-
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? new Date(0) : d;
-};
-
-// Helper function to create November 10th date for current year
 // Helper function to create November 10th date for previous year
 const getNovember10thDate = (): Date => {
   const today = new Date();
   const previousYear = today.getFullYear() - 1;
-  return new Date(previousYear, 10, 10); // Month is 0-indexed, so 10 = November
+  return new Date(previousYear, 10, 10);
 };
 
 const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({
-    // Set default to November 10th of current year to today
     start: format(getNovember10thDate(), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
@@ -72,10 +51,14 @@ const Index: React.FC = () => {
   const [couponUsersOpen, setCouponUsersOpen] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState("");
 
-  // NEW: Add missing state variables
   const [checkingCoupon, setCheckingCoupon] = useState(false);
   const [couponExists, setCouponExists] = useState<boolean | null>(null);
   const [couponAgentDetails, setCouponAgentDetails] = useState<any>(null);
+
+  // Payment management state
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+  const [selectAll, setSelectAll] = useState(false);
 
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [mounted, setMounted] = useState(false);
@@ -92,29 +75,193 @@ const Index: React.FC = () => {
 
   // New state for all transactions (for Navbar)
   const [allTransactionsData, setAllTransactionsData] = useState<any[]>([]);
+  const [transactionsPaymentData, setTransactionsPaymentData] = useState<Record<string, any>>({});
+  const [filteredTransactions, setFilteredTransactions] = useState<any[]>([]);
+  const [displayedTransactions, setDisplayedTransactions] = useState<any[]>([]);
+
+  // User role state
+  const [userRole, setUserRole] = useState<'admin' | 'accountant' | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+  const [userName, setUserName] = useState<string>('');
 
   const [locationPage, setLocationPage] = useState(1);
   useEffect(() => {
     setLocationPage(1);
   }, [allTopperData]);
 
-  // Fetch all data for topper dashboard (independent of date filter)
+  // Fetch user role and name from token on component mount
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          // Redirect to login if no token
+          window.location.href = '/login';
+          return;
+        }
+
+        // Decode JWT token to get role and name
+        const decoded: any = jwtDecode(token);
+        setUserRole(decoded.role || 'admin');
+        setUserName(decoded.name || 'Admin');
+
+        // Show welcome message based on role
+        if (decoded.role === 'accountant') {
+          toast.success(`Welcome back, ${decoded.name || ''}!`, {
+            description: 'You have edit access to payment statuses',
+            duration: 3000,
+          });
+        } else {
+          toast.success(`Welcome back, ${decoded.name || ''}!`, {
+            description: 'You have view-only access',
+            duration: 3000,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+        setUserRole('admin'); // Default to admin if error
+        setUserName('Admin');
+      } finally {
+        setUserLoading(false);
+      }
+    };
+
+    fetchUserInfo();
+    setMounted(true);
+  }, []);
+
+  // Helper function to fetch payment data for transactions
+  const fetchPaymentDataForTransactions = async (transactionIds: string[]) => {
+    if (transactionIds.length === 0) return {};
+
+    try {
+      console.log(`💰 Fetching payment data for ${transactionIds.length} transactions...`);
+      const response = await fetch(`${BASE_URL}/agents-db-payments/batch-payment-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionIds })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        console.log(`✅ Got payment data for ${Object.keys(data.data || {}).length} transactions`);
+        return data.data || {};
+      }
+      return {};
+    } catch (error) {
+      console.error('Error fetching payment data:', error);
+      return {};
+    }
+  };
+
+  // Function to fetch all transactions with payment data
+  const fetchAllTransactionsWithPayments = async () => {
+    try {
+      console.log("🔄 Fetching all transactions with payment data...");
+
+      // 1. Get all transactions
+      const transactionsRes = await fetch(`${BASE_URL}/transactions?limit=10000`);
+      const transactionsJson = await transactionsRes.json();
+
+      if (!transactionsJson.success || !transactionsJson.data) {
+        throw new Error("Failed to fetch transactions");
+      }
+
+      const transactions = transactionsJson.data;
+      console.log(`📋 Found ${transactions.length} transactions`);
+
+      // 2. Get payment data for all transactions
+      const transactionIds = transactions.map((t: any) => t._id).filter(Boolean);
+
+      const paymentData = await fetchPaymentDataForTransactions(transactionIds);
+
+      // 3. Merge the data
+      const mergedTransactions = transactions.map((transaction: any) => {
+        const payment = paymentData[transaction._id] || {};
+        return {
+          ...transaction,
+          // Add payment data if available
+          agent_payment_status: payment.agent_payment_status || 'pending',
+          agent_payment_mode: payment.agent_payment_mode || '',
+          agent_payment_date: payment.agent_payment_date || '',
+          agent_payment_updated_at: payment.agent_payment_updated_at || ''
+        };
+      });
+
+      console.log("🎉 Successfully merged all transaction data with payment data");
+      return { transactions: mergedTransactions, paymentData };
+
+    } catch (error) {
+      console.error("❌ Error fetching transactions with payments:", error);
+      throw error;
+    }
+  };
+
+  // Fetch all data for topper dashboard (independent of date filter) WITH PAYMENT DATA
   useEffect(() => {
     const fetchAllTopperData = async () => {
       try {
-        const res = await fetch(`${BASE_URL}/transactions?limit=10000`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setAllTopperData(json.data);
-          setAllTransactionsData(json.data);
-        }
+        const { transactions, paymentData } = await fetchAllTransactionsWithPayments();
+        setAllTopperData(transactions);
+        setAllTransactionsData(transactions);
+        setTransactionsPaymentData(paymentData);
       } catch (err) {
-        console.error("Failed to load topper data");
+        console.error("Failed to load topper data with payment data:", err);
+        // Fallback: try to fetch just transactions without payment data
+        try {
+          const res = await fetch(`${BASE_URL}/transactions?limit=10000`);
+          const json = await res.json();
+          if (json.success && json.data) {
+            setAllTopperData(json.data);
+            setAllTransactionsData(json.data);
+          }
+        } catch (fallbackErr) {
+          console.error("Fallback also failed:", fallbackErr);
+        }
       }
     };
 
     fetchAllTopperData();
   }, []);
+
+  // Function to refresh payment data
+  const refreshPaymentData = async () => {
+    if (allTransactionsData.length === 0) return;
+
+    try {
+      console.log("🔄 Refreshing payment data...");
+      const transactionIds = allTransactionsData.map(t => t._id).filter(Boolean);
+      const paymentData = await fetchPaymentDataForTransactions(transactionIds);
+
+      // Update the payment data state
+      setTransactionsPaymentData(paymentData);
+
+      // Update all transactions with payment data
+      const updatedTransactions = allTransactionsData.map(transaction => ({
+        ...transaction,
+        // Add payment data if available
+        agent_payment_status: paymentData[transaction._id]?.agent_payment_status || transaction.agent_payment_status || 'pending',
+        agent_payment_mode: paymentData[transaction._id]?.agent_payment_mode || transaction.agent_payment_mode || '',
+        agent_payment_date: paymentData[transaction._id]?.agent_payment_date || transaction.agent_payment_date || '',
+        agent_payment_updated_at: paymentData[transaction._id]?.agent_payment_updated_at || transaction.agent_payment_updated_at || ''
+      }));
+
+      setAllTopperData(updatedTransactions);
+      setAllTransactionsData(updatedTransactions);
+      console.log("✅ Payment data refreshed");
+    } catch (error) {
+      console.error("Error refreshing payment data:", error);
+    }
+  };
+
+  // Refresh payment data periodically (every 30 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshPaymentData();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [allTransactionsData]);
 
   // Fetch total agents count
   useEffect(() => {
@@ -137,13 +284,11 @@ const Index: React.FC = () => {
 
   const isClientSideMode = true;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   // Reset to page 1 on any filter change
   useEffect(() => {
     setPage(1);
+    setSelectedTransactions(new Set());
+    setSelectAll(false);
   }, [statusFilter, searchQuery, dateRange, couponFilter]);
 
   const { data, isLoading, error, refetch, isFetching } = useTransactions({
@@ -246,7 +391,7 @@ const Index: React.FC = () => {
       }
     });
 
-    result.sort((a, b) => {
+    result.sort((a: any, b: any) => {
       const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
       const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
       return sortDirection === "desc" ? db - da : da - db;
@@ -257,7 +402,8 @@ const Index: React.FC = () => {
     return result;
   };
 
-  const filteredTransactions = useMemo(() => {
+  // Update filtered transactions - ENSURE PAYMENT DATA IS INCLUDED
+  useEffect(() => {
     console.log("🔍 Starting filteredTransactions calculation");
     console.log("Base list length:", baseList.length);
 
@@ -289,55 +435,29 @@ const Index: React.FC = () => {
     });
 
     console.log("List before dedupe:", list.length);
-    const dedupedList = dedupeByUser(list);
-    console.log("List after dedupe:", dedupedList.length);
 
-    return dedupedList;
-  }, [baseList, statusFilter, couponFilter, sortDirection]);
+    // Dedupe and ENSURE PAYMENT DATA IS INCLUDED from transactionsPaymentData
+    const dedupedList = dedupeByUser(list).map(transaction => ({
+      ...transaction,
+      // Merge with payment data from our global state
+      ...transactionsPaymentData[transaction._id] || {}
+    }));
 
-  const transactionStats = useMemo(() => {
-    console.log("📊 Calculating transaction stats");
+    console.log("List after dedupe with payment data:", dedupedList.length);
+    setFilteredTransactions(dedupedList);
+  }, [baseList, statusFilter, couponFilter, sortDirection, transactionsPaymentData]);
 
-    if (!allTransactionsData || allTransactionsData.length === 0) {
-      return {
-        total: 0,
-        success: 0,
-        failed: 0
-      };
-    }
-
-    const dedupedTransactions = dedupeByUser(allTransactionsData);
-
-    let successCount = 0;
-    let failedCount = 0;
-
-    dedupedTransactions.forEach((transaction: any) => {
-      const status = transaction.paymentStatus;
-      if (status === 2) {
-        successCount++;
-      } else if (status === 3) {
-        failedCount++;
-      }
-    });
-
-    console.log(`Transaction stats - Total: ${dedupedTransactions.length}, Success: ${successCount}, Failed: ${failedCount}`);
-
-    return {
-      total: dedupedTransactions.length,
-      success: successCount,
-      failed: failedCount
-    };
-  }, [allTransactionsData]);
-
-  // FIXED: Get transactions for current page with S.No
-  const displayedTransactions = useMemo(() => {
+  // Update displayed transactions
+  useEffect(() => {
     const startIndex = (page - 1) * PAGE_SIZE;
-    return filteredTransactions
+    const newDisplayedTransactions = filteredTransactions
       .slice(startIndex, startIndex + PAGE_SIZE)
       .map((transaction, index) => ({
         ...transaction,
         serialNumber: startIndex + index + 1
       }));
+
+    setDisplayedTransactions(newDisplayedTransactions);
   }, [filteredTransactions, page]);
 
   // Pagination
@@ -345,8 +465,6 @@ const Index: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
-
-  const allFilteredTransactions = data?.data || [];
 
   const agentStats = useMemo(() => {
     const map = new Map<
@@ -410,33 +528,281 @@ const Index: React.FC = () => {
       .sort((a, b) => b.count - a.count);
   }, [allTopperData]);
 
-  // After agentStats is calculated, add this:
-  useEffect(() => {
-    console.log("📊 Agent Stats Debug:");
-    console.log(`Total agents in stats: ${agentStats.length}`);
+  const handleUpdatePayment = async (transactionId: string, paymentData: PaymentData) => {
+    // Check if user is accountant
+    if (userRole !== 'accountant') {
+      toast.error('Access denied. Only accountants can update payment status.');
+      return;
+    }
 
-    // Search for agent with YPHA7196
-    const targetAgent = agentStats.find(agent =>
-      agent.coupon && agent.coupon.toUpperCase().includes("YPHA7196")
-    );
+    console.log('🔄 handleUpdatePayment called:', {
+      transactionId,
+      paymentData
+    });
 
-    if (targetAgent) {
-      console.log(`✅ Found agent with coupon YPHA7196:`, targetAgent);
-      console.log(`Name: ${targetAgent.name}, Count: ${targetAgent.count}`);
+    // Since backend requires mode/date even for pending, we need to:
+    // 1. For paid: require mode and date
+    // 2. For pending: still send the existing mode/date (backend will store them but UI shows dashes)
+
+    if (paymentData.agent_payment_status === 'paid') {
+      if (!paymentData.agent_payment_mode) {
+        toast.error('Please select payment mode for paid status');
+        return;
+      }
+
+      if (!paymentData.agent_payment_date) {
+        toast.error('Please select payment date for paid status');
+        return;
+      }
     } else {
-      console.log(`❌ Agent with coupon YPHA7196 NOT FOUND in stats`);
+      // For pending, use existing values or defaults
+      if (!paymentData.agent_payment_mode) {
+        paymentData.agent_payment_mode = 'Not Paid';
+      }
 
-      // Check all transactions for this coupon
-      const transactionsWithCoupon = allTopperData.filter(t =>
-        (t.couponText || t.coupon_code || t.coupon || "").toUpperCase().includes("YPHA7196")
-      );
-      console.log(`Transactions with YPHA7196: ${transactionsWithCoupon.length}`);
-
-      if (transactionsWithCoupon.length > 0) {
-        console.log("Sample transactions:", transactionsWithCoupon.slice(0, 3));
+      if (!paymentData.agent_payment_date) {
+        paymentData.agent_payment_date = format(new Date(), 'yyyy-MM-dd');
       }
     }
-  }, [agentStats]);
+
+    setIsUpdatingPayment(true);
+
+    try {
+      // Map UI status to backend status
+      // Frontend: 'paid' -> Backend: 'completed'
+      // Frontend: 'pending' -> Backend: 'pending'
+      const backendStatus = paymentData.agent_payment_status === 'paid' ? 'completed' : 'pending';
+
+      // Always send mode and date (backend requires them)
+      const normalizedPaymentData = {
+        agent_payment_status: backendStatus,
+        agent_payment_mode: paymentData.agent_payment_mode ?
+          normalizePaymentMode(paymentData.agent_payment_mode) : 'not_paid',
+        agent_payment_date: paymentData.agent_payment_date ?
+          new Date(paymentData.agent_payment_date).toISOString() :
+          new Date().toISOString()
+      };
+
+      console.log('📦 Sending to backend:', normalizedPaymentData);
+
+      // Update ONLY in agents_db
+      const updateResponse = await fetch(`${BASE_URL}/agents-db-payments/update-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` // Send token for auth
+        },
+        body: JSON.stringify({
+          transactionId: String(transactionId),
+          paymentData: normalizedPaymentData
+        }),
+      });
+
+      console.log('📥 Update response status:', updateResponse.status);
+
+      // Check if the response is not OK
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        console.error('Backend error response:', errorText);
+
+        // Check if it's a permission error
+        if (updateResponse.status === 403) {
+          toast.error('Access denied. You do not have permission to update payments.');
+          return;
+        }
+
+        // Try to parse as JSON if possible
+        try {
+          const errorJson = JSON.parse(errorText);
+          console.error('Backend error JSON:', errorJson);
+          throw new Error(`Backend error: ${errorJson.message || errorText}`);
+        } catch {
+          throw new Error(`Backend returned ${updateResponse.status}: ${errorText}`);
+        }
+      }
+
+      const updateData = await updateResponse.json();
+      console.log('Update response data:', updateData);
+
+      if (updateData.success) {
+        const displayStatus = paymentData.agent_payment_status === 'paid' ? 'Paid' : 'Pending';
+        toast.success(`Payment status updated to ${displayStatus}`);
+
+        // Map backend status back to frontend status for UI
+        const uiStatus = updateData.data?.agent_payment_status === 'completed' ? 'paid' : 'pending';
+
+        // Update local states for immediate UI update
+        updateLocalTransactionPaymentStatus(transactionId, {
+          ...normalizedPaymentData,
+          agent_payment_status: uiStatus // Use frontend-friendly status
+        });
+
+        // Also update the payment data map
+        const newPaymentData = {
+          ...normalizedPaymentData,
+          agent_payment_status: uiStatus,
+          agent_payment_updated_at: new Date().toISOString()
+        };
+
+        setTransactionsPaymentData(prev => ({
+          ...prev,
+          [transactionId]: newPaymentData
+        }));
+
+        // Refresh payment data to ensure consistency
+        setTimeout(() => {
+          refreshPaymentData();
+        }, 1000);
+
+      } else {
+        toast.error(updateData.message || 'Failed to update payment');
+        console.error('Update failed:', updateData.error);
+      }
+    } catch (error: any) {
+      console.error('❌ Error updating payment:', error);
+
+      // Provide more specific error messages
+      if (error.message.includes('400')) {
+        toast.error('Invalid data sent to server. Please try again.');
+      } else if (error.message.includes('Network')) {
+        toast.error('Network error. Please check your connection.');
+      } else {
+        toast.error(error.message || 'Failed to update payment.');
+      }
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
+  // Update local state to reflect payment changes
+  const updateLocalTransactionPaymentStatus = (transactionId: string, paymentData: any) => {
+    // Map backend status to frontend status
+    const uiStatus = paymentData.agent_payment_status === 'completed' ? 'paid' : 'pending';
+
+    const updatedPaymentData = {
+      ...paymentData,
+      agent_payment_status: uiStatus
+    };
+
+    // Update displayedTransactions
+    setDisplayedTransactions(prev =>
+      prev.map(transaction =>
+        transaction._id === transactionId
+          ? {
+            ...transaction,
+            agent_payment_mode: updatedPaymentData.agent_payment_mode,
+            agent_payment_date: updatedPaymentData.agent_payment_date,
+            agent_payment_status: updatedPaymentData.agent_payment_status,
+            agent_payment_updated_at: new Date().toISOString()
+          }
+          : transaction
+      )
+    );
+
+    // Update filteredTransactions to persist changes during search/filter
+    setFilteredTransactions(prev =>
+      prev.map(transaction =>
+        transaction._id === transactionId
+          ? {
+            ...transaction,
+            agent_payment_mode: updatedPaymentData.agent_payment_mode,
+            agent_payment_date: updatedPaymentData.agent_payment_date,
+            agent_payment_status: updatedPaymentData.agent_payment_status,
+            agent_payment_updated_at: new Date().toISOString()
+          }
+          : transaction
+      )
+    );
+
+    // Update all transactions data
+    setAllTransactionsData(prev =>
+      prev.map(transaction =>
+        transaction._id === transactionId
+          ? {
+            ...transaction,
+            agent_payment_mode: updatedPaymentData.agent_payment_mode,
+            agent_payment_date: updatedPaymentData.agent_payment_date,
+            agent_payment_status: updatedPaymentData.agent_payment_status,
+            agent_payment_updated_at: new Date().toISOString()
+          }
+          : transaction
+      )
+    );
+
+    // Update topper data
+    setAllTopperData(prev =>
+      prev.map(transaction =>
+        transaction._id === transactionId
+          ? {
+            ...transaction,
+            agent_payment_mode: updatedPaymentData.agent_payment_mode,
+            agent_payment_date: updatedPaymentData.agent_payment_date,
+            agent_payment_status: updatedPaymentData.agent_payment_status,
+            agent_payment_updated_at: new Date().toISOString()
+          }
+          : transaction
+      )
+    );
+  };
+
+  // Helper functions to normalize values
+  const normalizePaymentMode = (mode: string): string => {
+    if (!mode || mode.trim() === '') {
+      return ''; // Return empty string for pending status
+    }
+
+    const modeMap: Record<string, string> = {
+      'cash': 'cash',
+      'Cash': 'cash',
+      'bank_transfer': 'bank_transfer',
+      'Bank Transfer': 'bank_transfer',
+      'bank transfer': 'bank_transfer',
+      'upi': 'upi',
+      'UPI': 'upi',
+      'cheque': 'cheque',
+      'Cheque': 'cheque',
+      'credit_card': 'credit_card',
+      'Credit Card': 'credit_card',
+      'credit card': 'credit_card',
+      'not_paid': 'not_paid',
+      'Not Paid': 'not_paid',
+      'not paid': 'not_paid'
+    };
+
+    return modeMap[mode] || mode.toLowerCase().replace(/\s+/g, '_');
+  };
+
+  const normalizePaymentStatus = (status: string): PaymentStatus => {
+    const statusLower = status.toLowerCase();
+
+    if (statusLower === 'paid' || statusLower === 'completed') {
+      return 'paid';
+    }
+
+    return 'pending'; // Default to pending for any other value
+  };
+
+  const handleTransactionSelect = (transactionId: string, isChecked: boolean) => {
+    const newSelection = new Set(selectedTransactions);
+    if (isChecked) {
+      newSelection.add(transactionId);
+    } else {
+      newSelection.delete(transactionId);
+    }
+    setSelectedTransactions(newSelection);
+    setSelectAll(newSelection.size === displayedTransactions.length);
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll || selectedTransactions.size === displayedTransactions.length) {
+      setSelectedTransactions(new Set());
+      setSelectAll(false);
+    } else {
+      const allIds = displayedTransactions.map(t => t._id);
+      setSelectedTransactions(new Set(allIds));
+      setSelectAll(true);
+    }
+  };
 
   const handleCouponSearch = async () => {
     if (!couponSearchCode.trim()) {
@@ -473,12 +839,10 @@ const Index: React.FC = () => {
 
   // Check if coupon is valid
   const isValidCoupon = useMemo(() => {
-    // Use the result from our coupon check
     if (couponExists !== null) {
       return couponExists;
     }
 
-    // Fallback: check in agentStats (agents with subscriptions)
     if (!coupon || !coupon.coupon || couponError || !couponIsFetched) {
       return false;
     }
@@ -493,12 +857,10 @@ const Index: React.FC = () => {
 
   // Get agent details for display
   const displayAgentDetails = useMemo(() => {
-    // Use the agent details from the check endpoint
     if (couponAgentDetails) {
       return couponAgentDetails;
     }
 
-    // Fallback: try to find in agentStats (agents with subscriptions)
     if (!coupon || !coupon.coupon) return null;
 
     const couponCode = coupon.coupon.toUpperCase();
@@ -523,11 +885,9 @@ const Index: React.FC = () => {
   useEffect(() => {
     if (hasSearchedCoupon && couponIsFetched && !checkingCoupon) {
       if (isValidCoupon) {
-        // Valid coupon found
         setCouponModalOpen(true);
         setShowCouponDropdown(false);
       } else {
-        // Coupon not found
         setCouponModalOpen(false);
       }
     }
@@ -552,8 +912,14 @@ const Index: React.FC = () => {
     setCouponUsersOpen(true);
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     refetch();
+    setSelectedTransactions(new Set());
+    setSelectAll(false);
+
+    // Also refresh payment data when manually refreshing
+    await refreshPaymentData();
+
     toast.success("Data refreshed");
   };
 
@@ -595,7 +961,6 @@ const Index: React.FC = () => {
     (allTopperData || []).forEach((t: any) => {
       if (t.paymentStatus !== 2) return;
 
-      // Skip transactions without agent name
       if (!t.agentName ||
         String(t.agentName).trim().toLowerCase() === "no agent" ||
         String(t.agentName).trim() === "") {
@@ -733,6 +1098,27 @@ const Index: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showCouponDropdown]);
+
+  // Create enhanced transactions with payment data
+  const enhancedTransactions = useMemo(() => {
+    return displayedTransactions.map(transaction => ({
+      ...transaction,
+      // Ensure payment data is included from our global state
+      ...transactionsPaymentData[transaction._id] || {}
+    }));
+  }, [displayedTransactions, transactionsPaymentData]);
+
+  // Show loading while fetching user info
+  if (userLoading) {
+    return (
+      <div className="min-h-screen bg-background bg-grid-pattern flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-lg font-medium">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background bg-grid-pattern">
@@ -1037,9 +1423,8 @@ const Index: React.FC = () => {
                 </div>
               )}
 
-              {/* Always show the table component */}
               <TransactionsTable
-                transactions={displayedTransactions}
+                transactions={enhancedTransactions}
                 isLoading={showLoading}
                 onCouponClick={handleCouponClick}
                 sortDirection={sortDirection}
@@ -1048,6 +1433,15 @@ const Index: React.FC = () => {
                 onStatusFilterChange={setStatusFilter}
                 couponFilter={couponFilter}
                 onCouponFilterChange={setCouponFilter}
+                // Payment management props - only pass if user is accountant
+                onTransactionSelect={userRole === 'accountant' ? handleTransactionSelect : undefined}
+                selectedTransactions={selectedTransactions}
+                onSelectAll={userRole === 'accountant' ? handleSelectAll : undefined}
+                isSelectAll={selectAll}
+                onPaymentUpdate={userRole === 'accountant' ? handleUpdatePayment : undefined}
+                isUpdatingPayment={isUpdatingPayment}
+                // Role-based props
+                userRole={userRole || 'admin'}
               />
 
               {/* Pagination - only show when we have transactions */}
@@ -1057,6 +1451,8 @@ const Index: React.FC = () => {
                   totalPages={totalPages}
                   onPageChange={(p) => {
                     setPage(p);
+                    setSelectedTransactions(new Set());
+                    setSelectAll(false);
                     if (!isClientSideMode) {
                       refetch();
                     }

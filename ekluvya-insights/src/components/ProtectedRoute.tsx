@@ -1,70 +1,93 @@
 // components/ProtectedRoute.tsx
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
     children: React.ReactNode;
-    role?: "admin" | "agent";
+    role?: "admin" | "agent" | "accountant" | ("admin" | "agent" | "accountant")[];
+    allowedRoles?: ("admin" | "agent" | "accountant")[];
 }
 
-const ProtectedRoute = ({ children, role }: ProtectedRouteProps) => {
+const ProtectedRoute = ({
+    children,
+    role,
+    allowedRoles = role ? (Array.isArray(role) ? role : [role]) : undefined
+}: ProtectedRouteProps) => {
     const navigate = useNavigate();
+    const [isChecking, setIsChecking] = useState(true);
 
     useEffect(() => {
+        console.log("🔒 ProtectedRoute - Checking authentication...");
+
         const token = localStorage.getItem("token");
-        const userRole = localStorage.getItem("role");
+        const userRole = localStorage.getItem("role") as "admin" | "agent" | "accountant" | null;
 
-        // Prevent back button navigation after logout
-        const handleBackButton = () => {
-            if (!token || !userRole) {
-                navigate("/login", { replace: true });
-            }
-        };
-
-        window.addEventListener("popstate", handleBackButton);
+        console.log("Token exists:", !!token);
+        console.log("User role from localStorage:", userRole);
+        console.log("Allowed roles:", allowedRoles);
 
         if (!token || !userRole) {
+            console.log("❌ No token or role, redirecting to login");
+            localStorage.removeItem("token");
+            localStorage.removeItem("role");
+            localStorage.removeItem("userName");
             navigate("/login", { replace: true });
             return;
         }
 
-        // Check role if specified
-        if (role && userRole !== role) {
-            // Redirect to appropriate dashboard based on role
-            if (userRole === "admin") {
-                navigate("/admin/dashboard", { replace: true });
-            } else if (userRole === "agent") {
-                navigate("/agent/dashboard", { replace: true });
+        // Check if role is allowed
+        if (allowedRoles && allowedRoles.length > 0) {
+            console.log("Checking role permissions...");
+            console.log("User role:", userRole);
+            console.log("Allowed roles:", allowedRoles);
+
+            if (!allowedRoles.includes(userRole)) {
+                console.log(`❌ Access denied. Role ${userRole} not in allowed roles:`, allowedRoles);
+
+                // Redirect to appropriate dashboard based on role
+                if (userRole === "admin" || userRole === "accountant") {
+                    console.log("Redirecting to admin dashboard");
+                    navigate("/admin/dashboard", { replace: true });
+                } else if (userRole === "agent") {
+                    console.log("Redirecting to agent dashboard");
+                    navigate("/agent/dashboard", { replace: true });
+                } else {
+                    console.log("Unknown role, redirecting to login");
+                    navigate("/login", { replace: true });
+                }
+                return;
             }
-            return;
+
+            console.log("✅ Role check passed!");
         }
 
+        console.log("✅ Authentication successful!");
+        setIsChecking(false);
+
+        // Cleanup function
         return () => {
-            window.removeEventListener("popstate", handleBackButton);
+            console.log("ProtectedRoute cleanup");
         };
-    }, [navigate, role]);
+    }, [navigate, allowedRoles]);
 
-    // Check token on every render
-    const token = localStorage.getItem("token");
-    const userRole = localStorage.getItem("role");
-
-    if (!token || !userRole) {
+    // Show loading while checking
+    if (isChecking) {
+        console.log("⏳ Showing loading spinner...");
         return (
-            <div className="flex min-h-screen items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin" />
+            <div className="flex min-h-screen items-center justify-center bg-background">
+                <div className="text-center">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+                    <p className="text-sm text-muted-foreground">Verifying access permissions...</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                        Role: {localStorage.getItem("role") || "Unknown"}
+                    </p>
+                </div>
             </div>
         );
     }
 
-    if (role && userRole !== role) {
-        return (
-            <div className="flex min-h-screen items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-        );
-    }
-
+    console.log("✅ Rendering protected content");
     return <>{children}</>;
 };
 

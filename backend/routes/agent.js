@@ -4,17 +4,18 @@ const Transaction = require("../models/userpaymenttransactions.model");
 const express = require("express");
 const router = express.Router();
 const { verifyToken } = require('../middleware/auth');
+const mongoose = require('mongoose');
 
 // GET /agent/profile
 router.get("/profile", verifyToken, async (req, res) => {
   try {
     // Since you're using MongoDB for agents, use the Agent model
     const agent = await Agent.findById(req.user.id).select("-password");
-    
+
     if (!agent) {
       return res.status(404).json({ message: 'Agent not found' });
     }
-    
+
     // Format the response to match what frontend expects
     res.json({
       name: agent.name || "Agent",
@@ -109,9 +110,9 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
     // Get filter from query
     const filterStatus = req.query.status || "all";
 
-    // Get agent from MongoDB
+    // Get agent from main database
     const agent = await Agent.findById(req.user.id).select("name couponCode");
-    
+
     if (!agent) {
       return res.status(404).json({
         success: false,
@@ -123,7 +124,7 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
     console.log("Agent:", agent.name, "Coupon:", agent.couponCode);
     console.log("Filter Status:", filterStatus);
 
-    // Get ALL transactions with user and payment info
+    // STEP 1: Get all transactions from main database (existing code)
     const allTransactions = await Transaction.aggregate([
       // Match transactions with agent's coupon code
       { $match: { coupon_text: agent.couponCode } },
@@ -216,20 +217,107 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
 
     console.log(`Found ${allTransactions.length} total transactions for coupon: ${agent.couponCode}`);
 
-    // Remove duplicates based on uniqueKey (username + mobile + status)
-    // Keep only the latest transaction for each unique combination
+    const transactionIds = allTransactions.map(t => t._id.toString());
+    let paymentMap = {};
+
+    try {
+      // Create connection to agents_db
+      const agentDbConnection = await mongoose.createConnection(process.env.AGENT_DB_URI).asPromise();
+
+      // Check if collection exists
+      const collections = await agentDbConnection.db.listCollections().toArray();
+      const collectionNames = collections.map(c => c.name);
+      console.log("Collections in agents_db:", collectionNames);
+
+      // Find the payment collection (could be named differently)
+      let paymentCollectionName = null;
+      const possibleNames = ['agent_payment_transactions', 'payments', 'agent_payments', 'transactions'];
+
+      for (const name of possibleNames) {
+        if (collectionNames.includes(name)) {
+          paymentCollectionName = name;
+          break;
+        }
+      }
+
+      if (paymentCollectionName) {
+        console.log(`Using collection: ${paymentCollectionName}`);
+
+        const paymentDocs = await agentDbConnection.db.collection(paymentCollectionName)
+          .find({
+            originalTransactionId: { $in: transactionIds }
+          })
+          .project({
+            originalTransactionId: 1,
+            agent_payment_status: 1,
+            agent_payment_mode: 1,
+            agent_payment_date: 1,
+            agent_payment_updated_at: 1,
+            coupon_text: 1
+          })
+          .toArray();
+
+        console.log(`Found ${paymentDocs.length} payment documents`);
+
+        // Create payment map
+        paymentDocs.forEach(payment => {
+          if (payment.originalTransactionId) {
+            paymentMap[payment.originalTransactionId.toString()] = {
+              agent_payment_status: payment.agent_payment_status,
+              agent_payment_mode: payment.agent_payment_mode,
+              agent_payment_date: payment.agent_payment_date,
+              agent_payment_updated_at: payment.agent_payment_updated_at
+            };
+          }
+        });
+      } else {
+        console.log("No payment collection found in agents_db");
+      }
+
+      // Close connection
+      await agentDbConnection.close();
+
+    } catch (paymentError) {
+      console.error("Error fetching payment data:", paymentError.message);
+    }
+
+    console.log(`Payment map has ${Object.keys(paymentMap).length} entries`);
+
+    // STEP 3: Remove duplicates and merge with payment data
     const uniqueMap = new Map();
 
     for (const transaction of allTransactions) {
       const key = transaction.uniqueKey;
       if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, transaction);
+        // Merge payment data if available
+        const transactionId = transaction._id.toString();
+        const paymentInfo = paymentMap[transactionId] || {};
+
+        uniqueMap.set(key, {
+          ...transaction,
+          ...paymentInfo
+        });
       }
     }
 
     const uniqueTransactions = Array.from(uniqueMap.values());
 
-    console.log(`After removing duplicates (by username+mobile+status): ${uniqueTransactions.length} unique transactions`);
+    console.log(`After removing duplicates: ${uniqueTransactions.length} unique transactions`);
+
+    // Log payment data status
+    const transactionsWithPayment = uniqueTransactions.filter(t => t.agent_payment_status);
+    console.log(`Transactions with payment data: ${transactionsWithPayment.length}/${uniqueTransactions.length}`);
+
+    if (transactionsWithPayment.length > 0) {
+      console.log("Sample payment data:", {
+        id: transactionsWithPayment[0]._id,
+        status: transactionsWithPayment[0].agent_payment_status,
+        date: transactionsWithPayment[0].agent_payment_date,
+        mode: transactionsWithPayment[0].agent_payment_mode
+      });
+    } else {
+      console.log("NO PAYMENT DATA FOUND for any transaction");
+    }
 
     // Apply status filter if needed
     let filteredTransactions = uniqueTransactions;
@@ -243,7 +331,6 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
 
     // SORT ONLY BY DATE (latest first) - no status grouping
     filteredTransactions.sort((a, b) => {
-      // Sort by date (latest first) ONLY
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
@@ -251,7 +338,7 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
     const totalCount = filteredTransactions.length;
     const paginatedData = filteredTransactions.slice(skip, skip + limit);
 
-    console.log(`Returning ${paginatedData.length} transactions for page ${page} (total: ${totalCount})`);
+    console.log(`Returning ${paginatedData.length} transactions for page ${page}`);
 
     // Format the data
     const formattedData = paginatedData.map((item, index) => {
@@ -303,7 +390,13 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
         createdAt: item.createdAt,
         formattedDate: formattedDate,
         formattedTime: formattedTime,
-        subscriptionType: "One-time"
+        subscriptionType: "One-time",
+
+        // Payment fields from agents_db
+        agent_payment_status: item.agent_payment_status,
+        agent_payment_date: item.agent_payment_date,
+        agent_payment_mode: item.agent_payment_mode,
+        agent_payment_updated_at: item.agent_payment_updated_at,
       };
     });
 
@@ -314,7 +407,7 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
       failedCount: 0,
       totalUsers: new Set(uniqueTransactions.map(tx =>
         `${tx.userName}|${tx.mobile}`
-      )).size // Count unique users (by username+mobile only)
+      )).size
     };
 
     uniqueTransactions.forEach(item => {
@@ -326,7 +419,7 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
       }
     });
 
-    console.log(`Stats: Success=${stats.successCount}, Failed=${stats.failedCount}, Total Users=${stats.totalUsers}, Revenue=${stats.totalRevenue}`);
+    console.log(`Stats: Success=${stats.successCount}, Failed=${stats.failedCount}, Revenue=${stats.totalRevenue}`);
 
     res.json({
       success: true,

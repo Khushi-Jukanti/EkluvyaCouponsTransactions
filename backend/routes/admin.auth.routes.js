@@ -1,13 +1,13 @@
-// admin.auth.routes.js - WITH DEBUGGING
+// admin.auth.routes.js - FINAL FIXED VERSION
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Agent = require("../models/agent");
 const router = express.Router();
 
-// Admin login - POST /api/auth/admin/login
+// Admin/Accountant login - POST /api/auth/admin/login
 router.post("/login", async (req, res) => {
-  console.log("\n=== ADMIN LOGIN REQUEST ===");
+  console.log("\n=== ADMIN/ACCOUNTANT LOGIN REQUEST ===");
   console.log("Request body:", req.body);
 
   try {
@@ -15,55 +15,50 @@ router.post("/login", async (req, res) => {
 
     if (!username || !password) {
       console.log("❌ Missing username or password");
-      return res.status(400).json({ message: "Username and password are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Username and password are required"
+      });
     }
 
-    console.log("Looking for admin with email:", username);
+    console.log("Looking for user with email:", username);
 
-    // Find admin by email
-    const admin = await Agent.findOne({
+    // Find user by email
+    const user = await Agent.findOne({
       email: username
     });
 
-    console.log("Query result:", admin ? "Found" : "Not found");
+    console.log("Query result:", user ? "Found" : "Not found");
 
-    if (!admin) {
-      console.log("❌ No admin found with email:", username);
-      return res.status(401).json({ message: "Invalid email or password" });
+    if (!user) {
+      console.log("❌ No user found with email:", username);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password"
+      });
     }
 
-    console.log("\n✅ Admin found in database:");
-    console.log("ID:", admin._id);
-    console.log("Name:", admin.name);
-    console.log("Email:", admin.email);
-    console.log("Role:", admin.role);
-    console.log("Has password field:", !!admin.password);
+    console.log("\n✅ User found in database:");
+    console.log("ID:", user._id);
+    console.log("Name:", user.name);
+    console.log("Email:", user.email);
+    console.log("Database Role:", user.role);  // This should show "accountant" for accountant
+    console.log("Has password field:", !!user.password);
 
-    if (admin.password) {
-      console.log("Password hash length:", admin.password.length);
-      console.log("Password hash (first 30 chars):", admin.password.substring(0, 30) + "...");
-
-      // IMPORTANT: Check if role is actually admin
-      if (admin.role !== "admin") {
-        console.log("⚠️ WARNING: User found but role is:", admin.role, "not 'admin'");
-        console.log("Setting role to 'admin' for this user");
-        admin.role = "admin";
-        await admin.save();
-      }
-    }
-
-    // Check if user has admin role
-    if (admin.role !== "admin") {
-      console.log("❌ User role is not admin:", admin.role);
+    // Check if user has admin OR accountant role
+    if (user.role !== "admin" && user.role !== "accountant") {
+      console.log("❌ User role is not admin or accountant:", user.role);
       return res.status(403).json({
-        message: "Access denied. Admin privileges required."
+        success: false,
+        message: "Access denied. Admin or accountant privileges required."
       });
     }
 
     // Check password
-    if (!admin.password) {
-      console.log("❌ No password set for admin");
+    if (!user.password) {
+      console.log("❌ No password set for user");
       return res.status(401).json({
+        success: false,
         message: "Password not set. Please contact administrator."
       });
     }
@@ -73,50 +68,61 @@ router.post("/login", async (req, res) => {
     console.log("Input password length:", password.length);
 
     // Compare password
-    const isMatch = await bcrypt.compare(password, admin.password);
+    const isMatch = await bcrypt.compare(password, user.password);
     console.log("Bcrypt compare result:", isMatch);
 
     if (!isMatch) {
       console.log("❌ Password doesn't match!");
-
-      // Try to see what's wrong
-      console.log("\nDebugging password mismatch:");
-      console.log("Stored hash:", admin.password);
-
-      // Test with the exact password we just set
-      const testMatch = await bcrypt.compare("admin@123", admin.password);
-      console.log("Does 'admin@123' match stored hash?", testMatch);
-
-      return res.status(401).json({ message: "Invalid password" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password"
+      });
     }
 
     console.log("\n✅ Password verified successfully!");
+    console.log("User role for JWT token:", user.role);  // Should be "accountant"
 
-    // Generate JWT token
+    // Generate JWT token - USE user.role NOT "admin"
+    const tokenPayload = {
+      id: user._id,
+      role: user.role,  // ← CRITICAL: Use actual role from database
+      name: user.name,
+      email: user.email
+    };
+
+    console.log("Token payload:", tokenPayload);
+
     const token = jwt.sign(
-      { id: admin._id, role: "admin" },
+      tokenPayload,
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    console.log("✅ JWT token generated");
-    console.log("Token (first 30 chars):", token.substring(0, 30) + "...");
-    console.log("=== ADMIN LOGIN SUCCESS ===\n");
+    console.log("✅ JWT token generated with role:", user.role);
+    console.log("=== LOGIN SUCCESS ===\n");
 
+    // Return response - USE user.role NOT "admin"
     res.json({
+      success: true,
       token,
-      role: "admin",
+      role: user.role,  // ← CRITICAL: Return actual role
       forcePasswordChange: false,
-      admin: {
-        name: admin.name,
-        email: admin.email
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,  // ← Include in user object too
+        mobile: user.mobile
       }
     });
 
   } catch (err) {
-    console.error("\n❌ ADMIN LOGIN ERROR:", err);
+    console.error("\n❌ LOGIN ERROR:", err);
     console.error("Error stack:", err.stack);
-    res.status(500).json({ message: "Server error during login" });
+    res.status(500).json({
+      success: false,
+      message: "Server error during login"
+    });
   }
 });
 

@@ -22,20 +22,22 @@ const app = require("./app");
 const { connectDB } = require("./config/db.config");
 const { loadAgentCoupons } = require("./utils/excelLoader.util");
 const agentAuthRoutes = require("./routes/agent.auth.routes");
-const adminAuthRoutes = require("./routes/admin.auth.routes"); 
+const adminAuthRoutes = require("./routes/admin.auth.routes");
 const agentRoutes = require("./routes/agent");
 const logoutRoutes = require("./routes/logout.routes");
 const passwordRoutes = require("./routes/password"); // Added password routes
+const agentsDbPaymentRoutes = require("./routes/agents-db-payments.routes");
 const PORT = process.env.PORT || 7000;
 
 connectDB();
 loadAgentCoupons();
 
-app.use("/api/auth/agent", agentAuthRoutes);   
+app.use("/api/auth/agent", agentAuthRoutes);
 app.use("/api/auth/admin", adminAuthRoutes);
-app.use("/api/password", passwordRoutes); // Register password routes
+app.use("/api/password", passwordRoutes);
 app.use("/api/logout", logoutRoutes);
-app.use("/api/agent", agentRoutes);             
+app.use("/api/agent", agentRoutes);
+app.use('/api/agents-db-payments', agentsDbPaymentRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Ekluvya Backend running at http://localhost:${PORT}`);
