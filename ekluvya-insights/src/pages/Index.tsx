@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit } from "lucide-react";
+import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit, Building } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -89,6 +89,14 @@ const Index: React.FC = () => {
     setLocationPage(1);
   }, [allTopperData]);
 
+  // Agent account numbers state
+  const [agentsMap, setAgentsMap] = useState<Record<string, {
+    accountNo?: string;
+    bankName?: string;
+    ifscCode?: string;
+    branchName?: string;
+  }>>({});
+
   // Fetch user role and name from token on component mount
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -154,10 +162,67 @@ const Index: React.FC = () => {
     }
   };
 
-  // Function to fetch all transactions with payment data
+  const fetchAgentAccountNumbers = async (agentNames: string[]) => {
+    try {
+      if (agentNames.length === 0) return {};
+
+      console.log(`🔍 Fetching agent account numbers for ${agentNames.length} agents...`);
+
+      // Filter out empty agent names
+      const validAgentNames = agentNames.filter(name =>
+        name &&
+        typeof name === 'string' &&
+        name.trim().toLowerCase() !== "no agent" &&
+        name.trim() !== ""
+      );
+
+      if (validAgentNames.length === 0) return {};
+
+      // Use the correct endpoint
+      const response = await fetch(`${BASE_URL}/agent/batch-account-numbers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentNames: validAgentNames })
+      });
+
+      if (!response.ok) {
+        console.warn(`⚠️ HTTP error! status: ${response.status}`);
+
+        // For 500 errors, try to get error details
+        if (response.status === 500) {
+          try {
+            const errorData = await response.json();
+            console.warn('Error details:', errorData);
+          } catch (e) {
+            console.warn('Could not parse error response');
+          }
+        }
+
+        // Return empty object instead of throwing
+        return {};
+      }
+
+      const data = await response.json();
+      console.log('Batch account numbers response:', data);
+
+      if (data.success) {
+        console.log(`✅ Got account numbers for ${Object.keys(data.data || {}).length} agents`);
+        return data.data || {};
+      } else {
+        console.warn('API returned error:', data.message);
+        return {};
+      }
+    } catch (error) {
+      console.warn('Error fetching agent account numbers:', error);
+      // Return empty object instead of throwing
+      return {};
+    }
+  };
+
+  // Fix the agentNames extraction in fetchAllTransactionsWithPayments
   const fetchAllTransactionsWithPayments = async () => {
     try {
-      console.log("🔄 Fetching all transactions with payment data...");
+      console.log("🔄 Fetching all transactions with payment data and agent account numbers...");
 
       // 1. Get all transactions
       const transactionsRes = await fetch(`${BASE_URL}/transactions?limit=10000`);
@@ -172,28 +237,136 @@ const Index: React.FC = () => {
 
       // 2. Get payment data for all transactions
       const transactionIds = transactions.map((t: any) => t._id).filter(Boolean);
-
       const paymentData = await fetchPaymentDataForTransactions(transactionIds);
 
-      // 3. Merge the data
+      // 3. Get agent account numbers - FIX TYPE HERE
+      const agentNames: string[] = [...new Set(transactions
+        .map((t: any) => t.agentName)
+        .filter((name: any): name is string =>
+          typeof name === 'string' &&
+          name.trim().toLowerCase() !== "no agent" &&
+          name.trim() !== ""
+        )
+      )];
+
+      const agentAccountNumbers = await fetchAgentAccountNumbers(agentNames);
+
+      // 4. Merge the data
       const mergedTransactions = transactions.map((transaction: any) => {
         const payment = paymentData[transaction._id] || {};
+        const agentName = transaction.agentName;
+        const agentAccount = agentAccountNumbers[agentName] || {};
+
         return {
           ...transaction,
           // Add payment data if available
           agent_payment_status: payment.agent_payment_status || 'pending',
           agent_payment_mode: payment.agent_payment_mode || '',
           agent_payment_date: payment.agent_payment_date || '',
-          agent_payment_updated_at: payment.agent_payment_updated_at || ''
+          agent_payment_updated_at: payment.agent_payment_updated_at || '',
+          // Add agent account number if available
+          agent_account_no: agentAccount.accountNo || '',
+          agent_bank_name: agentAccount.bankName || '',
+          agent_ifsc_code: agentAccount.ifscCode || '',
+          agent_branch_name: agentAccount.branchName || ''
         };
       });
 
-      console.log("🎉 Successfully merged all transaction data with payment data");
-      return { transactions: mergedTransactions, paymentData };
+      console.log("🎉 Successfully merged all transaction data with payment and agent data");
+      return {
+        transactions: mergedTransactions,
+        paymentData,
+        agentAccountNumbers
+      };
 
     } catch (error) {
-      console.error("❌ Error fetching transactions with payments:", error);
+      console.error("❌ Error fetching transactions with payments and agent data:", error);
       throw error;
+    }
+  };
+
+  // Update the refreshPaymentData function
+  const refreshPaymentData = async () => {
+    if (allTransactionsData.length === 0) return;
+
+    try {
+      console.log("🔄 Refreshing payment data and agent account numbers...");
+
+      // Get unique agent names - FIX TYPE HERE
+      const agentNames: string[] = [...new Set(allTransactionsData
+        .map((t: any) => t.agentName)
+        .filter((name: any): name is string =>
+          typeof name === 'string' &&
+          name.trim().toLowerCase() !== "no agent" &&
+          name.trim() !== ""
+        )
+      )];
+
+      // Fetch agent account numbers
+      const agentAccountNumbers = await fetchAgentAccountNumbers(agentNames);
+      setAgentsMap(agentAccountNumbers);
+
+      const transactionIds = allTransactionsData.map(t => t._id).filter(Boolean);
+      const paymentData = await fetchPaymentDataForTransactions(transactionIds);
+      setTransactionsPaymentData(paymentData);
+
+      // Update all transactions with payment data and account numbers
+      const updatedTransactions = allTransactionsData.map(transaction => {
+        const agentName = transaction.agentName;
+        const agentAccount = agentAccountNumbers[agentName] || {};
+
+        return {
+          ...transaction,
+          // Add payment data if available
+          agent_payment_status: paymentData[transaction._id]?.agent_payment_status || transaction.agent_payment_status || 'pending',
+          agent_payment_mode: paymentData[transaction._id]?.agent_payment_mode || transaction.agent_payment_mode || '',
+          agent_payment_date: paymentData[transaction._id]?.agent_payment_date || transaction.agent_payment_date || '',
+          agent_payment_updated_at: paymentData[transaction._id]?.agent_payment_updated_at || transaction.agent_payment_updated_at || '',
+          // Add agent account number if available
+          agent_account_no: agentAccount.accountNo || transaction.agent_account_no || '',
+          agent_bank_name: agentAccount.bankName || transaction.agent_bank_name || '',
+          agent_ifsc_code: agentAccount.ifscCode || transaction.agent_ifsc_code || '',
+          agent_branch_name: agentAccount.branchName || transaction.agent_branch_name || ''
+        };
+      });
+
+      setAllTopperData(updatedTransactions);
+      setAllTransactionsData(updatedTransactions);
+      console.log("✅ Payment data and agent account numbers refreshed");
+      toast.success("Data refreshed successfully");
+    } catch (error) {
+      console.error("Error refreshing payment data:", error);
+      toast.error("Failed to refresh data");
+    }
+  };
+  // Function to fetch agent account number for a single agent
+  const fetchAgentAccountNumber = async (agentName: string) => {
+    if (!agentName || agentName.trim().toLowerCase() === "no agent" || agentName.trim() === "") {
+      return '';
+    }
+
+    try {
+      const response = await fetch(`${BASE_URL}/agents/account-number/${encodeURIComponent(agentName)}`);
+      const data = await response.json();
+
+      if (data.success && data.accountNo) {
+        // Update the agents map
+        setAgentsMap(prev => ({
+          ...prev,
+          [agentName]: {
+            accountNo: data.accountNo,
+            bankName: data.bankName,
+            ifscCode: data.ifscCode,
+            branchName: data.branchName
+          }
+        }));
+
+        return data.accountNo;
+      }
+      return '';
+    } catch (error) {
+      console.error('Error fetching agent account number:', error);
+      return '';
     }
   };
 
@@ -201,10 +374,11 @@ const Index: React.FC = () => {
   useEffect(() => {
     const fetchAllTopperData = async () => {
       try {
-        const { transactions, paymentData } = await fetchAllTransactionsWithPayments();
+        const { transactions, paymentData, agentAccountNumbers } = await fetchAllTransactionsWithPayments();
         setAllTopperData(transactions);
         setAllTransactionsData(transactions);
         setTransactionsPaymentData(paymentData);
+        setAgentsMap(agentAccountNumbers || {});
       } catch (err) {
         console.error("Failed to load topper data with payment data:", err);
         // Fallback: try to fetch just transactions without payment data
@@ -223,36 +397,6 @@ const Index: React.FC = () => {
 
     fetchAllTopperData();
   }, []);
-
-  // Function to refresh payment data
-  const refreshPaymentData = async () => {
-    if (allTransactionsData.length === 0) return;
-
-    try {
-      console.log("🔄 Refreshing payment data...");
-      const transactionIds = allTransactionsData.map(t => t._id).filter(Boolean);
-      const paymentData = await fetchPaymentDataForTransactions(transactionIds);
-
-      // Update the payment data state
-      setTransactionsPaymentData(paymentData);
-
-      // Update all transactions with payment data
-      const updatedTransactions = allTransactionsData.map(transaction => ({
-        ...transaction,
-        // Add payment data if available
-        agent_payment_status: paymentData[transaction._id]?.agent_payment_status || transaction.agent_payment_status || 'pending',
-        agent_payment_mode: paymentData[transaction._id]?.agent_payment_mode || transaction.agent_payment_mode || '',
-        agent_payment_date: paymentData[transaction._id]?.agent_payment_date || transaction.agent_payment_date || '',
-        agent_payment_updated_at: paymentData[transaction._id]?.agent_payment_updated_at || transaction.agent_payment_updated_at || ''
-      }));
-
-      setAllTopperData(updatedTransactions);
-      setAllTransactionsData(updatedTransactions);
-      console.log("✅ Payment data refreshed");
-    } catch (error) {
-      console.error("Error refreshing payment data:", error);
-    }
-  };
 
   // Refresh payment data periodically (every 30 seconds)
   useEffect(() => {
@@ -402,7 +546,7 @@ const Index: React.FC = () => {
     return result;
   };
 
-  // Update filtered transactions - ENSURE PAYMENT DATA IS INCLUDED
+  // Update filtered transactions - ENSURE PAYMENT DATA AND AGENT ACCOUNT NUMBERS ARE INCLUDED
   useEffect(() => {
     console.log("🔍 Starting filteredTransactions calculation");
     console.log("Base list length:", baseList.length);
@@ -436,16 +580,21 @@ const Index: React.FC = () => {
 
     console.log("List before dedupe:", list.length);
 
-    // Dedupe and ENSURE PAYMENT DATA IS INCLUDED from transactionsPaymentData
+    // Dedupe and ENSURE PAYMENT DATA AND AGENT ACCOUNT NUMBERS ARE INCLUDED
     const dedupedList = dedupeByUser(list).map(transaction => ({
       ...transaction,
       // Merge with payment data from our global state
-      ...transactionsPaymentData[transaction._id] || {}
+      ...transactionsPaymentData[transaction._id] || {},
+      // Get agent account details from agentsMap
+      agent_account_no: agentsMap[transaction.agentName]?.accountNo || transaction.agent_account_no || '',
+      agent_bank_name: agentsMap[transaction.agentName]?.bankName || transaction.agent_bank_name || '',
+      agent_ifsc_code: agentsMap[transaction.agentName]?.ifscCode || transaction.agent_ifsc_code || '',
+      agent_branch_name: agentsMap[transaction.agentName]?.branchName || transaction.agent_branch_name || ''
     }));
 
-    console.log("List after dedupe with payment data:", dedupedList.length);
+    console.log("List after dedupe with payment data and agent account numbers:", dedupedList.length);
     setFilteredTransactions(dedupedList);
-  }, [baseList, statusFilter, couponFilter, sortDirection, transactionsPaymentData]);
+  }, [baseList, statusFilter, couponFilter, sortDirection, transactionsPaymentData, agentsMap]);
 
   // Update displayed transactions
   useEffect(() => {
@@ -684,63 +833,72 @@ const Index: React.FC = () => {
       agent_payment_status: uiStatus
     };
 
+    // Find the transaction to get agent name
+    const transaction = allTransactionsData.find(t => t._id === transactionId);
+    const agentName = transaction?.agentName;
+    const agentAccount = agentName ? agentsMap[agentName] : {};
+
     // Update displayedTransactions
     setDisplayedTransactions(prev =>
-      prev.map(transaction =>
-        transaction._id === transactionId
+      prev.map(t =>
+        t._id === transactionId
           ? {
-            ...transaction,
+            ...t,
             agent_payment_mode: updatedPaymentData.agent_payment_mode,
             agent_payment_date: updatedPaymentData.agent_payment_date,
             agent_payment_status: updatedPaymentData.agent_payment_status,
-            agent_payment_updated_at: new Date().toISOString()
+            agent_payment_updated_at: new Date().toISOString(),
+            agent_account_no: agentAccount?.accountNo || t.agent_account_no || ''
           }
-          : transaction
+          : t
       )
     );
 
     // Update filteredTransactions to persist changes during search/filter
     setFilteredTransactions(prev =>
-      prev.map(transaction =>
-        transaction._id === transactionId
+      prev.map(t =>
+        t._id === transactionId
           ? {
-            ...transaction,
+            ...t,
             agent_payment_mode: updatedPaymentData.agent_payment_mode,
             agent_payment_date: updatedPaymentData.agent_payment_date,
             agent_payment_status: updatedPaymentData.agent_payment_status,
-            agent_payment_updated_at: new Date().toISOString()
+            agent_payment_updated_at: new Date().toISOString(),
+            agent_account_no: agentAccount?.accountNo || t.agent_account_no || ''
           }
-          : transaction
+          : t
       )
     );
 
     // Update all transactions data
     setAllTransactionsData(prev =>
-      prev.map(transaction =>
-        transaction._id === transactionId
+      prev.map(t =>
+        t._id === transactionId
           ? {
-            ...transaction,
+            ...t,
             agent_payment_mode: updatedPaymentData.agent_payment_mode,
             agent_payment_date: updatedPaymentData.agent_payment_date,
             agent_payment_status: updatedPaymentData.agent_payment_status,
-            agent_payment_updated_at: new Date().toISOString()
+            agent_payment_updated_at: new Date().toISOString(),
+            agent_account_no: agentAccount?.accountNo || t.agent_account_no || ''
           }
-          : transaction
+          : t
       )
     );
 
     // Update topper data
     setAllTopperData(prev =>
-      prev.map(transaction =>
-        transaction._id === transactionId
+      prev.map(t =>
+        t._id === transactionId
           ? {
-            ...transaction,
+            ...t,
             agent_payment_mode: updatedPaymentData.agent_payment_mode,
             agent_payment_date: updatedPaymentData.agent_payment_date,
             agent_payment_status: updatedPaymentData.agent_payment_status,
-            agent_payment_updated_at: new Date().toISOString()
+            agent_payment_updated_at: new Date().toISOString(),
+            agent_account_no: agentAccount?.accountNo || t.agent_account_no || ''
           }
-          : transaction
+          : t
       )
     );
   };
@@ -1099,14 +1257,24 @@ const Index: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showCouponDropdown]);
 
-  // Create enhanced transactions with payment data
+  // Create enhanced transactions with payment data and agent account numbers
   const enhancedTransactions = useMemo(() => {
-    return displayedTransactions.map(transaction => ({
-      ...transaction,
-      // Ensure payment data is included from our global state
-      ...transactionsPaymentData[transaction._id] || {}
-    }));
-  }, [displayedTransactions, transactionsPaymentData]);
+    return displayedTransactions.map(transaction => {
+      const agentName = transaction.agentName;
+      const agentAccount = agentsMap[agentName] || {};
+
+      return {
+        ...transaction,
+        // Ensure payment data is included from our global state
+        ...transactionsPaymentData[transaction._id] || {},
+        // Ensure agent account details are included
+        agent_account_no: agentAccount.accountNo || transaction.agent_account_no || '',
+        agent_bank_name: agentAccount.bankName || transaction.agent_bank_name || '',
+        agent_ifsc_code: agentAccount.ifscCode || transaction.agent_ifsc_code || '',
+        agent_branch_name: agentAccount.branchName || transaction.agent_branch_name || ''
+      };
+    });
+  }, [displayedTransactions, transactionsPaymentData, agentsMap]);
 
   // Show loading while fetching user info
   if (userLoading) {
@@ -1413,6 +1581,16 @@ const Index: React.FC = () => {
                     >
                       <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
                       Refresh
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={refreshPaymentData}
+                      disabled={isFetching}
+                      className="gap-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                      Refresh Agent Data
                     </Button>
                     <ExportButton
                       dateRange={dateRange}

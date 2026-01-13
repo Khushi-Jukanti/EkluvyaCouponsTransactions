@@ -1,4 +1,3 @@
-// src/components/TransactionsTable.tsx
 import React, { useState } from "react";
 import { Transaction, PaymentData } from "@/types";
 import {
@@ -25,7 +24,10 @@ import {
   DollarSign,
   Eye,
   Edit,
-  Lock
+  Lock,
+  Building,
+  CreditCard,
+  Wallet
 } from "lucide-react";
 
 import {
@@ -38,6 +40,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TransactionsTableProps {
   transactions: (Transaction & { serialNumber?: number })[];
@@ -64,7 +67,7 @@ const TableSkeleton = () => (
   <>
     {Array.from({ length: 10 }).map((_, i) => (
       <TableRow key={i} className="animate-pulse">
-        {Array.from({ length: 15 }).map((_, j) => (
+        {Array.from({ length: 17 }).map((_, j) => (
           <TableCell key={j}>
             <div className="h-4 shimmer rounded w-full" />
           </TableCell>
@@ -349,6 +352,73 @@ const TransactionsTable = ({
     }
   };
 
+  // Helper to render agent account number with tooltip for bank details
+  const renderAgentAccountNumber = (transaction: Transaction & { serialNumber?: number }) => {
+    const accountNo = transaction.agent_account_no;
+    const bankName = transaction.agent_bank_name;
+    const ifscCode = transaction.agent_ifsc_code;
+    const branchName = transaction.agent_branch_name;
+
+    if (!accountNo || accountNo.trim() === '') {
+      return <span className="text-sm text-muted-foreground">—</span>;
+    }
+
+    const hasBankDetails = bankName || ifscCode || branchName;
+
+    if (hasBankDetails) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex flex-col items-center cursor-help">
+                <span className="font-mono text-sm font-medium">
+                  {accountNo.length > 8 ? `••••${accountNo.slice(-4)}` : accountNo}
+                </span>
+                {bankName && (
+                  <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                    {bankName}
+                  </span>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs bg-card border border-border shadow-lg">
+              <div className="space-y-2 p-2">
+                {bankName && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">Bank:</span>
+                    <p className="text-sm font-medium">{bankName}</p>
+                  </div>
+                )}
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground">Account No:</span>
+                  <p className="text-sm font-mono font-medium">{accountNo}</p>
+                </div>
+                {ifscCode && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">IFSC:</span>
+                    <p className="text-sm font-mono">{ifscCode}</p>
+                  </div>
+                )}
+                {branchName && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">Branch:</span>
+                    <p className="text-sm">{branchName}</p>
+                  </div>
+                )}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center">
+        <span className="font-mono text-sm font-medium">{accountNo}</span>
+      </div>
+    );
+  };
+
   // Check if user can edit (accountant only)
   const canEditPayment = userRole === 'accountant';
 
@@ -485,6 +555,12 @@ const TransactionsTable = ({
               <TableHead className="text-muted-foreground font-semibold">
                 Agent Phone
               </TableHead>
+              <TableHead className="text-muted-foreground font-semibold text-center">
+                <div className="flex flex-col items-center gap-1">
+                  <Building className="h-4 w-4 text-purple-500" />
+                  <span className="text-sm font-medium">Agent Account No.</span>
+                </div>
+              </TableHead>
               <TableHead className="text-muted-foreground font-semibold">
                 Agent Location
               </TableHead>
@@ -497,7 +573,7 @@ const TransactionsTable = ({
             ) : transactions.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={canEditPayment && onTransactionSelect ? 16 : 15}
+                  colSpan={canEditPayment && onTransactionSelect ? 17 : 16}
                   className="h-32 text-center"
                 >
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -726,6 +802,10 @@ const TransactionsTable = ({
                         <Phone className="h-3 w-3" />
                         <span className="text-sm">{transaction.agentPhone}</span>
                       </div>
+                    </TableCell>
+
+                    <TableCell className="text-center">
+                      {renderAgentAccountNumber(transaction)}
                     </TableCell>
 
                     <TableCell>

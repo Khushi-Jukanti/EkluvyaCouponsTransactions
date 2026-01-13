@@ -5,6 +5,53 @@ const express = require("express");
 const router = express.Router();
 const { verifyToken } = require('../middleware/auth');
 const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
+
+const AGENTS_DB_URL = process.env.AGENT_DB_URI || 'mongodb+srv://nataraju:lwD2YYqzE8LwjNJI@agents_db.uctlmuc.mongodb.net/agents_db';
+const AGENTS_DB_NAME = process.env.AGENTS_DB_NAME || 'agents_db';
+
+// MongoDB connection client
+let agentsDbClient = null;
+let agentsDb = null;
+
+// Function to connect to agents database
+async function connectToAgentsDB() {
+  try {
+    // Check if we already have a connection
+    if (agentsDbClient && agentsDb) {
+      try {
+        // Try a simple operation to check if connection is alive
+        await agentsDb.command({ ping: 1 });
+        console.log('✅ Using existing agents database connection');
+        return agentsDb;
+      } catch (error) {
+        console.log('⚠️ Existing connection lost, reconnecting...');
+        // Connection is dead, need to reconnect
+        agentsDbClient = null;
+        agentsDb = null;
+      }
+    }
+
+    console.log('🔌 Connecting to agents database...');
+
+    // Connect to MongoDB
+    agentsDbClient = await MongoClient.connect(AGENTS_DB_URL);
+
+    agentsDb = agentsDbClient.db(AGENTS_DB_NAME);
+
+    // Test the connection
+    await agentsDb.command({ ping: 1 });
+    console.log('✅ Successfully connected to agents database');
+
+    return agentsDb;
+  } catch (error) {
+    console.error('❌ Failed to connect to agents database:', error.message);
+    // Reset connection on error
+    agentsDbClient = null;
+    agentsDb = null;
+    throw error;
+  }
+}
 
 // GET /agent/profile
 router.get("/profile", verifyToken, async (req, res) => {
@@ -446,6 +493,303 @@ router.get("/subscriptions", verifyToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching subscription data",
+      error: error.message
+    });
+  }
+});
+
+router.post('/batch-account-numbers', async (req, res) => {
+  console.log('📦 Received batch account numbers request');
+
+  try {
+    const { agentNames } = req.body;
+
+    console.log('Agent names received:', agentNames);
+    console.log('Number of agent names:', agentNames.length);
+
+    if (!agentNames || !Array.isArray(agentNames)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Agent names array is required'
+      });
+    }
+
+    // Filter valid agent names
+    const validAgentNames = agentNames
+      .filter(name => name && typeof name === 'string' && name.trim() !== '')
+      .map(name => name.trim());
+
+    console.log(`Valid agent names: ${validAgentNames.length}`);
+
+    if (validAgentNames.length === 0) {
+      return res.json({
+        success: true,
+        data: {}
+      });
+    }
+
+    try {
+      // Connect to agents database
+      const db = await connectToAgentsDB();
+      const agentsCollection = db.collection('agents');
+
+      console.log('Connected to agents_db, querying agents collection...');
+
+      // IMPORTANT: Create regex patterns for case-insensitive search
+      // Some agent names might have different casing
+      const regexPatterns = validAgentNames.map(name =>
+        new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+      );
+
+      console.log('Regex patterns created for search');
+
+      // Query agents by name (case-insensitive)
+      const agents = await agentsCollection.find(
+        {
+          name: { $in: regexPatterns }
+        },
+        {
+          projection: {
+            name: 1,
+            account_number: 1,    // Note: field name is account_number
+            bank_name: 1,         // Note: field name is bank_name
+            ifsc_code: 1,         // Note: field name is ifsc_code
+            mobile: 1,
+            email: 1,
+            couponCode: 1
+            // Note: No branchName field in your data
+          }
+        }
+      ).toArray();
+
+      console.log(`Found ${agents.length} agents in agents_db`);
+
+      // Log what we found
+      agents.forEach(agent => {
+        console.log(`Found agent: "${agent.name}"`);
+        console.log(`  Account: ${agent.account_number || 'N/A'}`);
+        console.log(`  Bank: ${agent.bank_name || 'N/A'}`);
+        console.log(`  IFSC: ${agent.ifsc_code || 'N/A'}`);
+      });
+
+      // Create a map of agent names to account details
+      const agentMap = {};
+
+      // First, try to match exact names
+      agents.forEach(agent => {
+        if (agent.name) {
+          // Find the exact matching name from our list
+          const matchingName = validAgentNames.find(name =>
+            name.toLowerCase() === agent.name.toLowerCase()
+          );
+
+          if (matchingName) {
+            agentMap[matchingName] = {
+              // Map the actual field names from agents_db to expected frontend names
+              accountNo: agent.account_number || '',      // Map account_number to accountNo
+              bankName: agent.bank_name || '',           // Map bank_name to bankName
+              ifscCode: agent.ifsc_code || '',           // Map ifsc_code to ifscCode
+              branchName: '',                            // Your data doesn't have branchName
+              phone: agent.mobile || '',
+              email: agent.email || '',
+              couponCode: agent.couponCode || '',
+              source: 'agents_db'
+            };
+            console.log(`✅ Mapped agent "${matchingName}"`);
+          }
+        }
+      });
+
+      // Also check for missing agents and provide empty entries
+      validAgentNames.forEach(name => {
+        if (!agentMap[name]) {
+          // Try a direct query for this specific name
+          console.log(`⚠️ Agent "${name}" not found in initial query, trying direct search...`);
+
+          // Don't do another query here, just mark as not found
+          agentMap[name] = {
+            accountNo: '',
+            bankName: '',
+            ifscCode: '',
+            branchName: '',
+            phone: '',
+            email: '',
+            couponCode: '',
+            source: 'not_found'
+          };
+        }
+      });
+
+      console.log(`Returning data for ${Object.keys(agentMap).length} agents`);
+
+      // Log final results
+      console.log('=== FINAL RESULTS ===');
+      Object.entries(agentMap).forEach(([name, data]) => {
+        console.log(`${name}: ${data.accountNo ? '✓ Has data' : '✗ No data'} (${data.source})`);
+      });
+
+      res.json({
+        success: true,
+        data: agentMap,
+        stats: {
+          requested: validAgentNames.length,
+          found: agents.length,
+          returned: Object.keys(agentMap).length,
+          withAccountData: Object.values(agentMap).filter(a => a.accountNo).length
+        }
+      });
+
+    } catch (dbError) {
+      console.error('Database error:', dbError.message);
+      console.error('Stack:', dbError.stack);
+
+      // If database connection fails, return empty data
+      const agentMap = {};
+      validAgentNames.forEach(name => {
+        agentMap[name] = {
+          accountNo: '',
+          bankName: '',
+          ifscCode: '',
+          branchName: '',
+          phone: '',
+          email: '',
+          couponCode: '',
+          source: 'error'
+        };
+      });
+
+      res.json({
+        success: true,
+        data: agentMap,
+        warning: 'Database connection issue, returning empty data',
+        stats: {
+          requested: validAgentNames.length,
+          found: 0,
+          returned: validAgentNames.length
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error in batch account numbers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch agent account numbers',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Single agent account number endpoint
+router.get('/account-number/:agentName', async (req, res) => {
+  try {
+    const { agentName } = req.params;
+
+    if (!agentName || typeof agentName !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Agent name is required'
+      });
+    }
+
+    try {
+      const db = await connectToAgentsDB();
+      const agentsCollection = db.collection('agents');
+
+      // Query agent by name (case-insensitive)
+      const agent = await agentsCollection.findOne(
+        { name: new RegExp(`^${agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        {
+          projection: {
+            accountNo: 1,
+            bankName: 1,
+            ifscCode: 1,
+            branchName: 1,
+            phone: 1,
+            mobile: 1
+          }
+        }
+      );
+
+      if (!agent) {
+        return res.json({
+          success: true,
+          accountNo: '',
+          bankName: '',
+          ifscCode: '',
+          branchName: '',
+          phone: ''
+        });
+      }
+
+      res.json({
+        success: true,
+        accountNo: agent.accountNo || '',
+        bankName: agent.bankName || '',
+        ifscCode: agent.ifscCode || '',
+        branchName: agent.branchName || '',
+        phone: agent.phone || agent.mobile || ''
+      });
+
+    } catch (dbError) {
+      console.error('Database error:', dbError.message);
+
+      // Return empty data if database fails
+      res.json({
+        success: true,
+        accountNo: '',
+        bankName: '',
+        ifscCode: '',
+        branchName: '',
+        phone: '',
+        warning: 'Database connection issue'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error fetching agent account number:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch agent account number',
+      error: error.message
+    });
+  }
+});
+
+// Test endpoint to check database structure
+router.get('/test-db-structure', async (req, res) => {
+  try {
+    const db = await connectToAgentsDB();
+
+    // List all collections
+    const collections = await db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+
+    // Get sample documents from each collection
+    const sampleData = {};
+
+    for (const collectionName of collectionNames) {
+      const collection = db.collection(collectionName);
+      const sampleDoc = await collection.findOne({});
+
+      sampleData[collectionName] = {
+        count: await collection.countDocuments(),
+        sample: sampleDoc
+      };
+    }
+
+    res.json({
+      success: true,
+      database: AGENTS_DB_NAME,
+      collections: collectionNames,
+      data: sampleData
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check database structure',
       error: error.message
     });
   }

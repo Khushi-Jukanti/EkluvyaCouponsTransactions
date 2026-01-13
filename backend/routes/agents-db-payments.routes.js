@@ -305,45 +305,4 @@ router.post('/bulk-sync-recent', async (req, res) => {
     }
 });
 
-// Test endpoint to verify connection and find a transaction
-router.get('/test/:transactionId', async (req, res) => {
-    try {
-        const { transactionId } = req.params;
-
-        console.log('🧪 Testing endpoint for transactionId:', transactionId);
-
-        await agentsDbSyncService.initialize();
-
-        // Try to find the transaction
-        const transaction = await agentsDbSyncService.AgentPaymentTransaction.findOne({
-            originalTransactionId: transactionId
-        });
-
-        console.log('🔍 Transaction found:', transaction ? 'Yes' : 'No');
-
-        if (transaction) {
-            console.log('Transaction details:', {
-                _id: transaction._id,
-                originalTransactionId: transaction.originalTransactionId,
-                agentName: transaction.agentName,
-                amount: transaction.amount
-            });
-        }
-
-        res.json({
-            success: true,
-            found: !!transaction,
-            transaction: transaction || null,
-            connection: 'established'
-        });
-    } catch (error) {
-        console.error('❌ Test error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            stack: error.stack
-        });
-    }
-});
-
 module.exports = router;

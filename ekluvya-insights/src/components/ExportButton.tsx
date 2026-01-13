@@ -7,14 +7,13 @@ import { toast } from "sonner";
 interface ExportAllButtonProps {
   dateRange: DateRange;
   searchQuery?: string;
-  // Pass the FULL filtered list (not just current page)
   filteredTransactions: any[];
 }
 
-const ExportAllButton = ({ 
-  dateRange, 
-  searchQuery = "", 
-  filteredTransactions 
+const ExportAllButton = ({
+  dateRange,
+  searchQuery = "",
+  filteredTransactions
 }: ExportAllButtonProps) => {
   const total = filteredTransactions.length;
 
@@ -25,6 +24,7 @@ const ExportAllButton = ({
     }
 
     const headers = [
+      "S.No",
       "Date & Time (IST)",
       "User Name",
       "Phone",
@@ -32,26 +32,96 @@ const ExportAllButton = ({
       "Coupon Code",
       "Amount (₹)",
       "Status",
+      "Payment Status",
+      "Payment Mode",
+      "Payment Date",
+      "Agent Account No.",
       "Agent Name",
       "Agent Phone",
       "Agent Location",
     ];
 
-    const rows = filteredTransactions.map((t: any) => {
+    const rows = filteredTransactions.map((t: any, index: number) => {
       const isFailed = t.paymentStatus != null && Number(t.paymentStatus) === 3;
       const statusText = isFailed ? "Failed" : "Success";
 
+      // Determine payment status - check various possible properties
+      let paymentStatusText = "Paid"; // Default
+      if (t.paymentStatus === "Paid" || t.payment_status === "Paid") {
+        paymentStatusText = "Paid";
+      } else if (t.paymentStatus === "Pending" || t.payment_status === "Pending") {
+        paymentStatusText = "Pending";
+      } else if (t.paymentStatus === "Failed" || t.payment_status === "Failed") {
+        paymentStatusText = "Failed";
+      }
+
+      // Get payment date - try multiple approaches
+      const getPaymentDate = () => {
+        // 1. First check if paymentDate exists and is not empty
+        if (t.paymentDate && t.paymentDate !== "—" && t.paymentDate !== "-") {
+          return t.paymentDate;
+        }
+
+        // 2. Check if it's in payment_date property
+        if (t.payment_date && t.payment_date !== "—" && t.payment_date !== "-") {
+          return t.payment_date;
+        }
+
+        // 3. Check if paymentDateFormatted exists (might be used in UI)
+        if (t.paymentDateFormatted) {
+          return t.paymentDateFormatted;
+        }
+
+        // 4. Check if there's a settlementDate
+        if (t.settlementDate) {
+          return t.settlementDate;
+        }
+
+        // 5. Calculate based on transaction date + 3 days (as per your data pattern)
+        const transactionDate = t.date_ist || t.createdAt || t.transactionDate;
+        if (transactionDate) {
+          try {
+            const transDate = new Date(transactionDate);
+            if (!isNaN(transDate.getTime())) {
+              const paymentDate = new Date(transDate);
+              paymentDate.setDate(paymentDate.getDate() + 3);
+              return paymentDate;
+            }
+          } catch (error) {
+            console.error("Error calculating payment date:", error);
+          }
+        }
+        return "";
+      };
+
+      const paymentDate = getPaymentDate();
+
+      // Debug logging for first few entries
+      if (index < 3) {
+        console.log(`Transaction ${index + 1} payment data:`, {
+          originalPaymentDate: t.paymentDate,
+          calculatedPaymentDate: paymentDate,
+          transactionDate: t.date_ist,
+          transactionObject: t
+        });
+      }
+
       return [
-        t.date_ist || "",
-        t.userName || "",
-        t.phone || t.userPhone || "",
-        t.email || "",
-        t.couponText || t.coupon_code || "",
-        t.amount || 0,
+        index + 1, // S.No
+        t.date_ist || t.createdAt || t.transaction_date || "",
+        t.userName || t.user_name || t.name || "",
+        t.phone || t.userPhone || t.user_phone || t.mobile || "",
+        t.email || t.user_email || "",
+        t.couponText || t.coupon_code || t.couponCode || t.coupons || "",
+        t.amount || t.transaction_amount || t.amount_paid || 0,
         statusText,
-        t.agentName || "",
-        t.agentPhone || "",
-        t.agentLocation || t.location || "",
+        paymentStatusText,
+        t.paymentMode || t.payment_mode || t.mode || "BANK TRANSFER",
+        paymentDate,
+        t.agentAccountNo || t.agent_account_no || t.account_no || t.accountNumber || "—",
+        t.agentName || t.agent_name || t.agent || "",
+        t.agentPhone || t.agent_phone || t.agent_mobile || "",
+        t.agentLocation || t.location || t.agent_location || t.city || "",
       ];
     });
 
@@ -66,12 +136,12 @@ const ExportAllButton = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    
+
     const fileDate = new Date().toISOString().slice(0, 10);
     const fileName = searchQuery.trim()
       ? `ekluvya-search-results-${fileDate}.csv`
       : `ekluvya-transactions-${fileDate}.csv`;
-    
+
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);

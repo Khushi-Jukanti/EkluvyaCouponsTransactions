@@ -73,6 +73,11 @@ export interface Transaction {
   agent_payment_date?: string | Date;
   agent_payment_updated_by?: string;
   agent_payment_updated_at?: string;
+
+  agent_account_no?: string;
+  agent_bank_name?: string;
+  agent_ifsc_code?: string;
+  agent_branch_name?: string;
 }
 
 export interface TransactionsResponse {
