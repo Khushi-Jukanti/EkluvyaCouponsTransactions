@@ -1136,6 +1136,10 @@ const Index: React.FC = () => {
   };
 
   const onDateRangeChange = (range: DateRange) => {
+    if (transactionUserType === "b2b" && debouncedSchoolCode) {
+      return;
+    }
+
     if (validateDateRange(range)) {
       setDateRange(range);
       setPage(1);
@@ -1326,7 +1330,7 @@ const Index: React.FC = () => {
         totalTransactions={data?.total || 0}
         allTransactions={allTransactionsData}
         isLoading={isLoading}
-        ignoreDateFilter={transactionUserType === "b2b"}
+        ignoreDateFilter={transactionUserType === "b2b" && Boolean(debouncedSchoolCode)}
         summaryCounts={data?.summary || null}
       />
 
@@ -1494,7 +1498,7 @@ const Index: React.FC = () => {
                       setPage(1);
                     }}
                   >
-                    All Transactions
+                    B2C Transactions
                   </Button>
                   <Button
                     variant={transactionUserType === "b2b" ? "glow" : "outline"}
@@ -1618,7 +1622,7 @@ const Index: React.FC = () => {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     placeholder={transactionUserType === "b2b"
-                      ? "Search by mobile, name, amount, school code..."
+                      ? "Search by name, userId, amount, school code..."
                       : "Search by mobile, name, amount, agent..."}
                     value={searchQuery}
                     onChange={(e) => {
@@ -1634,6 +1638,7 @@ const Index: React.FC = () => {
                 <DateRangePicker
                   dateRange={dateRange}
                   onDateRangeChange={onDateRangeChange}
+                  disabled={transactionUserType === "b2b" && Boolean(debouncedSchoolCode)}
                 />
               </div>
             </div>
@@ -1666,16 +1671,18 @@ const Index: React.FC = () => {
                       <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
                       Refresh
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={refreshPaymentData}
-                      disabled={isFetching}
-                      className="gap-2"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-                      Refresh Agent Data
-                    </Button>
+                    {transactionUserType === "b2c" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={refreshPaymentData}
+                        disabled={isFetching}
+                        className="gap-2"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                        Refresh Agent Data
+                      </Button>
+                    )}
                     <ExportButton
                       dateRange={dateRange}
                       searchQuery={searchQuery}

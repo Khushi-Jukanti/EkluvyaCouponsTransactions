@@ -439,7 +439,7 @@ const TransactionsTable = ({
                   First Name
                 </TableHead>
                 <TableHead className="text-muted-foreground font-semibold">
-                  Username
+                  UserId
                 </TableHead>
                 <TableHead className="text-muted-foreground font-semibold">
                   School Code

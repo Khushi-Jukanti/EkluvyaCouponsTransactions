@@ -27,7 +27,8 @@ export const fetchTransactions = async ({
   schoolCode,
 }: UseTransactionsParams): Promise<TransactionsResponse> => {
   const finalLimit = exportAll ? 10000 : limit;
-  const applyDateFilter = userType !== "b2b";
+  const hasSchoolCode = Boolean(schoolCode?.trim());
+  const applyDateFilter = !(userType === "b2b" && hasSchoolCode);
 
   const params = new URLSearchParams({
     page: String(page),
@@ -61,7 +62,8 @@ export const fetchTransactions = async ({
 };
 
 export const useTransactions = (params: UseTransactionsParams) => {
-  const applyDateFilter = params.userType !== "b2b";
+  const hasSchoolCode = Boolean(params.schoolCode?.trim());
+  const applyDateFilter = !(params.userType === "b2b" && hasSchoolCode);
 
   return useQuery({
     queryKey: [

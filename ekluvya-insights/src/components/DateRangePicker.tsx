@@ -14,9 +14,10 @@ import { DateRange } from "@/types";
 interface DateRangePickerProps {
   dateRange: DateRange;
   onDateRangeChange: (range: DateRange) => void;
+  disabled?: boolean;
 }
 
-const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps) => {
+const DateRangePicker = ({ dateRange, onDateRangeChange, disabled = false }: DateRangePickerProps) => {
   const [startDate, setStartDate] = useState<Date | undefined>(
     dateRange.start ? new Date(dateRange.start) : undefined
   );
@@ -25,6 +26,7 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
   );
 
   const handleStartDateSelect = (date: Date | undefined) => {
+    if (disabled) return;
     setStartDate(date);
     if (date) {
       onDateRangeChange({
@@ -35,6 +37,7 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
   };
 
   const handleEndDateSelect = (date: Date | undefined) => {
+    if (disabled) return;
     setEndDate(date);
     if (date) {
       onDateRangeChange({
@@ -50,9 +53,11 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
         <PopoverTrigger asChild>
           <Button
             variant="glass"
+            disabled={disabled}
             className={cn(
               "w-[140px] justify-start text-left font-normal",
-              !startDate && "text-muted-foreground"
+              !startDate && "text-muted-foreground",
+              disabled && "cursor-not-allowed opacity-60"
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -65,6 +70,7 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
             selected={startDate}
             onSelect={handleStartDateSelect}
             initialFocus
+            disabled={disabled}
             className="pointer-events-auto"
           />
         </PopoverContent>
@@ -76,9 +82,11 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
         <PopoverTrigger asChild>
           <Button
             variant="glass"
+            disabled={disabled}
             className={cn(
               "w-[140px] justify-start text-left font-normal",
-              !endDate && "text-muted-foreground"
+              !endDate && "text-muted-foreground",
+              disabled && "cursor-not-allowed opacity-60"
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -91,6 +99,7 @@ const DateRangePicker = ({ dateRange, onDateRangeChange }: DateRangePickerProps)
             selected={endDate}
             onSelect={handleEndDateSelect}
             initialFocus
+            disabled={disabled}
             className="pointer-events-auto"
           />
         </PopoverContent>
