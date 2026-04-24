@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 // MongoDB connection - Use your actual MongoDB URI
-const MONGODB_URI = process.env.AGENT_DB_URI || 'mongodb+srv://nataraju:lwD2YYqzE8LwjNJI@agents_db.uctlmuc.mongodb.net/agents_db';
+const MONGODB_URI = process.env.AGENT_DB_URI;
 
 // Database name
 const DB_NAME = 'agents_db';

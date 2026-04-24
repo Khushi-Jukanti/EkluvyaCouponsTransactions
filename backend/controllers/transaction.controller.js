@@ -8,17 +8,27 @@ const toInt = (v, defaultVal) => {
   return Number.isFinite(n) && n > 0 ? n : defaultVal;
 };
 
+const escapeRegex = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const getAllTransactions = async (req, res) => {
   try {
     const {
       start,
       end,
       coupon,
+      user_type,
+      school_code,
       page = 1,
       limit = 50,
       sort = "desc", // optional sort param
       status,
     } = req.query;
+
+    const requestedUserType =
+      String(user_type || "b2c").toLowerCase() === "b2b" ? "b2b" : "b2c";
+    const requestedSchoolCode = String(school_code || "").trim();
+    const applyDateFilter = !requestedSchoolCode;
 
     const pageNum = toInt(page, 1);
     const limitNum = toInt(limit, 50);
@@ -28,7 +38,7 @@ const getAllTransactions = async (req, res) => {
     // Build date range in IST
     let startDate = null;
     let endDate = null;
-    if (start || end) {
+    if (applyDateFilter && (start || end)) {
       startDate = moment
         .tz(start || "1970-01-01", "Asia/Kolkata")
         .startOf("day")
@@ -77,7 +87,7 @@ const getAllTransactions = async (req, res) => {
     });
 
     // Apply date range match if provided
-    if (startDate || endDate) {
+    if (applyDateFilter && (startDate || endDate)) {
       const dateMatch = {};
       if (startDate) dateMatch.$gte = startDate;
       if (endDate) dateMatch.$lte = endDate;
@@ -106,6 +116,33 @@ const getAllTransactions = async (req, res) => {
       { $unwind: { path: "$payment", preserveNullAndEmptyArrays: true } }
     );
 
+    pipeline.push({
+      $addFields: {
+        resolvedUserType: {
+          $toLower: { $ifNull: ["$user.user_type", "b2c"] },
+        },
+        resolvedSchoolCode: { $ifNull: ["$user.school_code", ""] },
+        resolvedUsername: { $ifNull: ["$user.username", ""] },
+      },
+    });
+
+    pipeline.push({
+      $match: {
+        resolvedUserType: requestedUserType,
+      },
+    });
+
+    if (requestedUserType === "b2b" && requestedSchoolCode) {
+      pipeline.push({
+        $match: {
+          resolvedSchoolCode: {
+            $regex: `^${escapeRegex(requestedSchoolCode)}`,
+            $options: "i",
+          },
+        },
+      });
+    }
+
     // Project fields you need. Use createdDate for formatting below.
     pipeline.push({
       $project: {
@@ -115,13 +152,58 @@ const getAllTransactions = async (req, res) => {
         userName: {
           $trim: {
             input: {
-              $concat: [
-                "$user.first_name",
-                " ",
-                { $ifNull: ["$user.last_name", ""] },
+              $cond: [
+                { $eq: ["$resolvedUserType", "b2b"] },
+                {
+                  $cond: [
+                    { $ne: ["$resolvedUsername", ""] },
+                    "$resolvedUsername",
+                    {
+                      $concat: [
+                        "$user.first_name",
+                        " ",
+                        { $ifNull: ["$user.last_name", ""] },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  $concat: [
+                    "$user.first_name",
+                    " ",
+                    { $ifNull: ["$user.last_name", ""] },
+                  ],
+                },
               ],
             },
           },
+        },
+        first_name: {
+          $cond: [
+            { $eq: ["$resolvedUserType", "b2b"] },
+            "$user.first_name",
+            "$$REMOVE",
+          ],
+        },
+        username: {
+          $cond: [
+            {
+              $and: [
+                { $eq: ["$resolvedUserType", "b2b"] },
+                { $ne: ["$resolvedUsername", ""] },
+              ],
+            },
+            "$resolvedUsername",
+            "$$REMOVE",
+          ],
+        },
+        user_type: "$resolvedUserType",
+        school_code: {
+          $cond: [
+            { $eq: ["$resolvedUserType", "b2b"] },
+            "$resolvedSchoolCode",
+            "$$REMOVE",
+          ],
         },
         phone: "$user.phone",
         email: "$user.email",
@@ -145,6 +227,7 @@ const getAllTransactions = async (req, res) => {
             timezone: "Asia/Kolkata",
           },
         },
+        transaction_date: "$createdDate",
         createdDate: 1, // pass through for sorting
       },
     });
@@ -156,6 +239,35 @@ const getAllTransactions = async (req, res) => {
       countResult && countResult[0] && countResult[0].total
         ? countResult[0].total
         : 0;
+
+    const summaryPipeline = [
+      ...pipeline,
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          success: {
+            $sum: {
+              $cond: [{ $eq: ["$paymentStatus", 2] }, 1, 0],
+            },
+          },
+          failed: {
+            $sum: {
+              $cond: [{ $eq: ["$paymentStatus", 3] }, 1, 0],
+            },
+          },
+        },
+      },
+    ];
+    const summaryResult = await UserPaymentTransaction.aggregate(summaryPipeline);
+    const summary =
+      summaryResult && summaryResult[0]
+        ? {
+            total: summaryResult[0].total || 0,
+            success: summaryResult[0].success || 0,
+            failed: summaryResult[0].failed || 0,
+          }
+        : { total: 0, success: 0, failed: 0 };
 
     // Now apply sort, skip and limit to fetch page
     pipeline.push({ $sort: { createdDate: sortOrder } });
@@ -186,6 +298,7 @@ const getAllTransactions = async (req, res) => {
       success: true,
       count: enrichedData.length,
       total,
+      summary,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
       data: enrichedData,

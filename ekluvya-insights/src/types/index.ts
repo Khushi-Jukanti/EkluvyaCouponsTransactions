@@ -49,13 +49,18 @@ export type PaymentStatus = 'pending' | 'paid';
 export interface Transaction {
   // Existing fields
   transactionId?: string;
+  user_type?: "b2b" | "b2c";
   userName: string;
+  first_name?: string;
+  username?: string;
+  school_code?: string;
   phone: string;
   email: string;
   couponText?: string;
   amount: number;
   paymentStatus?: number;
   date_ist: string;
+  transaction_date?: string | Date;
   agentName: string;
   agentPhone: string;
   agentLocation: string;
@@ -84,6 +89,11 @@ export interface TransactionsResponse {
   success: boolean;
   count: number;
   total: number;
+  summary?: {
+    total: number;
+    success: number;
+    failed: number;
+  };
   page: number;
   pages: number;
   data: Transaction[];   // ← THIS IS WHAT YOUR BACKEND RETURNS!

@@ -7,7 +7,7 @@ const { verifyToken } = require('../middleware/auth');
 const mongoose = require('mongoose');
 const { MongoClient } = require('mongodb');
 
-const AGENTS_DB_URL = process.env.AGENT_DB_URI || 'mongodb+srv://nataraju:lwD2YYqzE8LwjNJI@agents_db.uctlmuc.mongodb.net/agents_db';
+const AGENTS_DB_URL = process.env.AGENT_DB_URI;
 const AGENTS_DB_NAME = process.env.AGENTS_DB_NAME || 'agents_db';
 
 // MongoDB connection client
