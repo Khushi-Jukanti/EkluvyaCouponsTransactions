@@ -61,13 +61,16 @@ interface TransactionsTableProps {
   isUpdatingPayment?: boolean;
   // Role-based props
   userRole?: 'admin' | 'accountant';
+  b2bMode?: boolean;
+  showCouponFields?: boolean;
+  showAgentFields?: boolean;
 }
 
-const TableSkeleton = () => (
+const TableSkeleton = ({ columnCount }: { columnCount: number }) => (
   <>
     {Array.from({ length: 10 }).map((_, i) => (
       <TableRow key={i} className="animate-pulse">
-        {Array.from({ length: 17 }).map((_, j) => (
+        {Array.from({ length: columnCount }).map((_, j) => (
           <TableCell key={j}>
             <div className="h-4 shimmer rounded w-full" />
           </TableCell>
@@ -121,7 +124,10 @@ const TransactionsTable = ({
   onPaymentUpdate,
   isUpdatingPayment = false,
   // Role-based props
-  userRole = 'admin'
+  userRole = 'admin',
+  b2bMode = false,
+  showCouponFields = true,
+  showAgentFields = true
 }: TransactionsTableProps) => {
   const formatDate = (dateRaw?: string | number | Date) => {
     const d = parseAnyDate(dateRaw as any);
@@ -412,15 +418,95 @@ const TransactionsTable = ({
       );
     }
 
-    return (
+  return (
       <div className="flex flex-col items-center">
         <span className="font-mono text-sm font-medium">{accountNo}</span>
       </div>
     );
   };
 
+  if (b2bMode) {
+    return (
+      <div className="glass-card rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border/50 hover:bg-transparent">
+                <TableHead className="text-muted-foreground font-semibold text-center w-16">
+                  S.No
+                </TableHead>
+                <TableHead className="text-muted-foreground font-semibold">
+                  First Name
+                </TableHead>
+                <TableHead className="text-muted-foreground font-semibold">
+                  UserId
+                </TableHead>
+                <TableHead className="text-muted-foreground font-semibold">
+                  School Code
+                </TableHead>
+                <TableHead className="text-muted-foreground font-semibold text-right">
+                  Amount
+                </TableHead>
+                <TableHead className="text-muted-foreground font-semibold">
+                  Transaction Date
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {isLoading ? (
+                <TableSkeleton columnCount={6} />
+              ) : transactions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-32 text-center">
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <User className="h-8 w-8" />
+                      <p>No transactions found</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                transactions.map((transaction, index) => (
+                  <TableRow
+                    key={transaction._id || transaction.transactionId || `b2b-${index}`}
+                    className="table-row-hover border-border/30"
+                    style={{ animationDelay: `${index * 30}ms` }}
+                  >
+                    <TableCell className="text-center text-muted-foreground font-medium">
+                      {transaction.serialNumber || index + 1}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {transaction.first_name || transaction.userName || "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {transaction.username || "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {transaction.school_code || "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-success">
+                      ₹{transaction.amount?.toLocaleString("en-IN") || "0"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {formatDate(transaction.transaction_date || transaction.date_ist)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
+  }
+
   // Check if user can edit (accountant only)
   const canEditPayment = userRole === 'accountant';
+  const selectionColumnCount = canEditPayment && onTransactionSelect ? 1 : 0;
+  const couponColumnCount = showCouponFields ? 1 : 0;
+  const agentColumnCount = showAgentFields ? 4 : 0;
+  const actionColumnCount = canEditPayment ? 1 : 0;
+  const totalColumns = selectionColumnCount + 10 + couponColumnCount + agentColumnCount + actionColumnCount;
 
   return (
     <div className="glass-card rounded-xl overflow-hidden">
@@ -479,24 +565,26 @@ const TransactionsTable = ({
                 Email
               </TableHead>
 
-              <TableHead className="text-muted-foreground font-semibold">
-                <div className="flex flex-col items-center justify-center gap-1">
-                  <span className="text-sm font-medium">Coupons</span>
-                  <div className="flex items-center gap-1">
-                    <Select value={couponFilter} onValueChange={onCouponFilterChange}>
-                      <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-1 text-sm font-medium">
-                        <Tag className="h-4 w-4 text-primary" />
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All</SelectItem>
-                        <SelectItem value="with">With Coupon</SelectItem>
-                        <SelectItem value="without">Without Coupon</SelectItem>
-                      </SelectContent>
-                    </Select>
+              {showCouponFields && (
+                <TableHead className="text-muted-foreground font-semibold">
+                  <div className="flex flex-col items-center justify-center gap-1">
+                    <span className="text-sm font-medium">Coupons</span>
+                    <div className="flex items-center gap-1">
+                      <Select value={couponFilter} onValueChange={onCouponFilterChange}>
+                        <SelectTrigger className="h-8 w-26 border-0 bg-transparent hover:bg-muted/50 px-1 text-sm font-medium">
+                          <Tag className="h-4 w-4 text-primary" />
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="with">With Coupon</SelectItem>
+                          <SelectItem value="without">Without Coupon</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
-              </TableHead>
+                </TableHead>
+              )}
 
               <TableHead className="text-muted-foreground font-semibold text-right">
                 Amount
@@ -549,31 +637,35 @@ const TransactionsTable = ({
                 </TableHead>
               )}
 
-              <TableHead className="text-muted-foreground font-semibold">
-                Agent Name
-              </TableHead>
-              <TableHead className="text-muted-foreground font-semibold">
-                Agent Phone
-              </TableHead>
-              <TableHead className="text-muted-foreground font-semibold text-center">
-                <div className="flex flex-col items-center gap-1">
-                  <Building className="h-4 w-4 text-purple-500" />
-                  <span className="text-sm font-medium">Agent Account No.</span>
-                </div>
-              </TableHead>
-              <TableHead className="text-muted-foreground font-semibold">
-                Agent Location
-              </TableHead>
+              {showAgentFields && (
+                <>
+                  <TableHead className="text-muted-foreground font-semibold">
+                    Agent Name
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-semibold">
+                    Agent Phone
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-semibold text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <Building className="h-4 w-4 text-purple-500" />
+                      <span className="text-sm font-medium">Agent Account No.</span>
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-semibold">
+                    Agent Location
+                  </TableHead>
+                </>
+              )}
             </TableRow>
           </TableHeader>
 
           <TableBody>
             {isLoading ? (
-              <TableSkeleton />
+              <TableSkeleton columnCount={totalColumns} />
             ) : transactions.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={canEditPayment && onTransactionSelect ? 17 : 16}
+                  colSpan={totalColumns}
                   className="h-32 text-center"
                 >
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -646,17 +738,19 @@ const TransactionsTable = ({
                       </div>
                     </TableCell>
 
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors font-mono"
-                        onClick={() =>
-                          onCouponClick(transaction.couponText || "")
-                        }
-                      >
-                        {transaction.couponText || transaction.coupon_code || transaction.coupon || "N/A"}
-                      </Badge>
-                    </TableCell>
+                    {showCouponFields && (
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors font-mono"
+                          onClick={() =>
+                            onCouponClick(transaction.couponText || "")
+                          }
+                        >
+                          {transaction.couponText || transaction.coupon_code || transaction.coupon || "N/A"}
+                        </Badge>
+                      </TableCell>
+                    )}
 
                     <TableCell className="text-right">
                       <span
@@ -793,29 +887,33 @@ const TransactionsTable = ({
                       </TableCell>
                     )}
 
-                    <TableCell className="font-medium">
-                      {transaction.agentName}
-                    </TableCell>
+                    {showAgentFields && (
+                      <>
+                        <TableCell className="font-medium">
+                          {transaction.agentName}
+                        </TableCell>
 
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Phone className="h-3 w-3" />
-                        <span className="text-sm">{transaction.agentPhone}</span>
-                      </div>
-                    </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            <span className="text-sm">{transaction.agentPhone}</span>
+                          </div>
+                        </TableCell>
 
-                    <TableCell className="text-center">
-                      {renderAgentAccountNumber(transaction)}
-                    </TableCell>
+                        <TableCell className="text-center">
+                          {renderAgentAccountNumber(transaction)}
+                        </TableCell>
 
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        <span className="text-sm">
-                          {transaction.agentLocation}
-                        </span>
-                      </div>
-                    </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <MapPin className="h-3 w-3" />
+                            <span className="text-sm">
+                              {transaction.agentLocation}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 )
               })

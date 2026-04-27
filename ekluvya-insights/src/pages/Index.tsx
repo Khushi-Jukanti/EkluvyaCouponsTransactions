@@ -42,6 +42,9 @@ const Index: React.FC = () => {
 
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [couponFilter, setCouponFilter] = useState<"all" | "with" | "without">("all");
+  const [transactionUserType, setTransactionUserType] = useState<"b2c" | "b2b">("b2c");
+  const [schoolCode, setSchoolCode] = useState("");
+  const [debouncedSchoolCode, setDebouncedSchoolCode] = useState("");
 
   const [couponSearchCode, setCouponSearchCode] = useState("");
   const [couponSearchTrigger, setCouponSearchTrigger] = useState("");
@@ -83,6 +86,14 @@ const Index: React.FC = () => {
   const [userRole, setUserRole] = useState<'admin' | 'accountant' | null>(null);
   const [userLoading, setUserLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSchoolCode(schoolCode.trim().toUpperCase());
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [schoolCode]);
 
   const [locationPage, setLocationPage] = useState(1);
   useEffect(() => {
@@ -212,11 +223,26 @@ const Index: React.FC = () => {
         console.warn('API returned error:', data.message);
         return {};
       }
-    } catch (error) {
-      console.warn('Error fetching agent account numbers:', error);
-      // Return empty object instead of throwing
-      return {};
+  } catch (error) {
+    console.warn('Error fetching agent account numbers:', error);
+    // Return empty object instead of throwing
+    return {};
+  }
+  };
+
+  const fetchTransactionsUrl = (limit: number) => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      page: "1",
+      user_type: transactionUserType,
+      _t: Date.now().toString(),
+    });
+
+    if (transactionUserType === "b2b" && debouncedSchoolCode) {
+      params.append("school_code", debouncedSchoolCode);
     }
+
+    return `${BASE_URL}/transactions?${params.toString()}`;
   };
 
   // Fix the agentNames extraction in fetchAllTransactionsWithPayments
@@ -225,7 +251,7 @@ const Index: React.FC = () => {
       console.log("🔄 Fetching all transactions with payment data and agent account numbers...");
 
       // 1. Get all transactions
-      const transactionsRes = await fetch(`${BASE_URL}/transactions?limit=10000`);
+      const transactionsRes = await fetch(fetchTransactionsUrl(10000));
       const transactionsJson = await transactionsRes.json();
 
       if (!transactionsJson.success || !transactionsJson.data) {
@@ -383,7 +409,7 @@ const Index: React.FC = () => {
         console.error("Failed to load topper data with payment data:", err);
         // Fallback: try to fetch just transactions without payment data
         try {
-          const res = await fetch(`${BASE_URL}/transactions?limit=10000`);
+          const res = await fetch(fetchTransactionsUrl(10000));
           const json = await res.json();
           if (json.success && json.data) {
             setAllTopperData(json.data);
@@ -396,7 +422,7 @@ const Index: React.FC = () => {
     };
 
     fetchAllTopperData();
-  }, []);
+  }, [transactionUserType, debouncedSchoolCode]);
 
   // Refresh payment data periodically (every 30 seconds)
   useEffect(() => {
@@ -433,7 +459,7 @@ const Index: React.FC = () => {
     setPage(1);
     setSelectedTransactions(new Set());
     setSelectAll(false);
-  }, [statusFilter, searchQuery, dateRange, couponFilter]);
+  }, [statusFilter, searchQuery, dateRange, couponFilter, transactionUserType, debouncedSchoolCode]);
 
   const { data, isLoading, error, refetch, isFetching } = useTransactions({
     page: isClientSideMode ? 1 : page,
@@ -441,6 +467,8 @@ const Index: React.FC = () => {
     dateRange,
     coupon: "",
     sortOrder: sortDirection,
+    userType: transactionUserType,
+    schoolCode: debouncedSchoolCode,
   });
 
   const {
@@ -458,12 +486,14 @@ const Index: React.FC = () => {
 
     return data.data.filter((t: any) => {
       const phone = String(t.phone ?? t.userPhone ?? "").toLowerCase();
-      const userName = String(t.userName ?? t.name ?? "").toLowerCase();
+      const userName = String(t.username ?? t.userName ?? t.name ?? "").toLowerCase();
       const amount = String(t.amount ?? "").toLowerCase();
       const agentName = String(t.agentName ?? "").toLowerCase();
       const agentPhone = String(t.agentPhone ?? "").toLowerCase();
       const agentLocation = String(t.agentLocation ?? t.location ?? "").toLowerCase();
       const email = String(t.email ?? "").toLowerCase();
+      const school = String(t.school_code ?? "").toLowerCase();
+      const userType = String(t.user_type ?? "").toLowerCase();
 
       return (
         phone.includes(q) ||
@@ -472,7 +502,9 @@ const Index: React.FC = () => {
         agentName.includes(q) ||
         agentPhone.includes(q) ||
         agentLocation.includes(q) ||
-        email.includes(q)
+        email.includes(q) ||
+        school.includes(q) ||
+        userType.includes(q)
       );
     });
   }, [data?.data, searchQuery]);
@@ -1104,6 +1136,10 @@ const Index: React.FC = () => {
   };
 
   const onDateRangeChange = (range: DateRange) => {
+    if (transactionUserType === "b2b" && debouncedSchoolCode) {
+      return;
+    }
+
     if (validateDateRange(range)) {
       setDateRange(range);
       setPage(1);
@@ -1294,10 +1330,14 @@ const Index: React.FC = () => {
         totalTransactions={data?.total || 0}
         allTransactions={allTransactionsData}
         isLoading={isLoading}
+        ignoreDateFilter={transactionUserType === "b2b" && Boolean(debouncedSchoolCode)}
+        summaryCounts={data?.summary || null}
       />
 
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-6">
+          {transactionUserType === "b2c" && (
+            <>
           {/* Header & Coupon Search */}
           <div className="glass-card rounded-xl p-6 space-y-4">
             <h2 className="text-2xl font-bold tracking-tight">
@@ -1435,96 +1475,142 @@ const Index: React.FC = () => {
               </div>
             )}
           </div>
+            </>
+          )}
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">
-                All Transactions
+                {transactionUserType === "b2b" ? "B2B Transactions" : "All Transactions"}
               </h2>
               <p className="text-muted-foreground">
-                Search by Mobile, Name, Amount, or Agent
+                {transactionUserType === "b2b"
+                  ? "Search by Mobile, Name, Amount, or School Code"
+                  : "Search by Mobile, Name, Amount, or Agent"}
               </p>
-            </div>
-            <div className="flex items-center gap-4">
-              {/* Total Agents Count */}
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Users className="h-5 w-5 text-primary" />
-                <span className="text-large">
-                  Total Agents:
-                  {agentsLoading ? (
-                    <span className="ml-2 inline-block h-5 w-20 shimmer rounded" />
-                  ) : (
-                    <span className="font-bold text-foreground ml-2">{totalAgents.toLocaleString()}</span>
-                  )}
-                </span>
-              </div>
-              <div className="relative coupon-search-container">
-                <Button
-                  variant="glow"
-                  className="gap-2"
-                  onClick={handleCouponButtonClick}
-                >
-                  <Tag className="h-4 w-4" />
-                  Search Coupon
-                </Button>
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant={transactionUserType === "b2c" ? "glow" : "outline"}
+                    className="gap-2"
+                    onClick={() => {
+                      setTransactionUserType("b2c");
+                      setPage(1);
+                    }}
+                  >
+                    B2C Transactions
+                  </Button>
+                  <Button
+                    variant={transactionUserType === "b2b" ? "glow" : "outline"}
+                    className="gap-2"
+                    onClick={() => {
+                      setTransactionUserType("b2b");
+                      setPage(1);
+                    }}
+                  >
+                    B2B Transactions
+                  </Button>
+                </div>
 
-                {/* Dropdown Search Form */}
-                {showCouponDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-96 glass-card rounded-lg p-4 shadow-lg z-50 border border-border">
-                    <div className="space-y-4">
-                      <div className="flex gap-2 min-w-0">
-                        <Input
-                          placeholder="Enter coupon code (e.g., ARAM8893)"
-                          value={couponSearchCode}
-                          onChange={(e) => {
-                            setCouponSearchCode(e.target.value.toUpperCase());
-                            setHasSearchedCoupon(false);
-                          }}
-                          onKeyPress={handleCouponKeyPress}
-                          className="font-mono text-lg h-12"
-                          autoFocus
-                        />
-                        <Button
-                          onClick={handleCouponSearch}
-                          disabled={isCouponLoading || checkingCoupon}
-                          className="h-12 px-6"
-                          variant="glow"
-                        >
-                          {(isCouponLoading || checkingCoupon) ? (
-                            <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                          ) : (
-                            <Search className="h-5 w-5" />
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Show checking state */}
-                      {(isCouponLoading || checkingCoupon) && (
-                        <div className="flex justify-center p-4">
-                          <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                        </div>
-                      )}
-
-                      {/* Show error when coupon not found */}
-                      {hasSearchedCoupon && couponIsFetched && !checkingCoupon && !isValidCoupon && (
-                        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-                          <div className="flex items-center gap-3">
-                            <XCircle className="h-6 w-6 text-destructive" />
-                            <div>
-                              <h4 className="font-semibold text-sm text-destructive mb-1">
-                                Agent Not Found
-                              </h4>
-                              <p className="text-destructive/80 text-xs">
-                                The coupon code "{couponSearchTrigger}" is not associated with any registered agent.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                {transactionUserType === "b2b" && (
+                  <div className="flex w-full max-w-sm items-center gap-2">
+                    <Building className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter by school code"
+                      value={schoolCode}
+                      onChange={(e) => {
+                        setSchoolCode(e.target.value.toUpperCase());
+                        setPage(1);
+                      }}
+                      className="h-11 uppercase"
+                    />
                   </div>
                 )}
               </div>
+            </div>
+            <div className="flex items-center gap-4">
+              {transactionUserType === "b2c" && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Users className="h-5 w-5 text-primary" />
+                  <span className="text-large">
+                    Total Agents:
+                    {agentsLoading ? (
+                      <span className="ml-2 inline-block h-5 w-20 shimmer rounded" />
+                    ) : (
+                      <span className="font-bold text-foreground ml-2">{totalAgents.toLocaleString()}</span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {transactionUserType === "b2c" && (
+                <div className="relative coupon-search-container">
+                  <Button
+                    variant="glow"
+                    className="gap-2"
+                    onClick={handleCouponButtonClick}
+                  >
+                    <Tag className="h-4 w-4" />
+                    Search Coupon
+                  </Button>
+
+                  {/* Dropdown Search Form */}
+                  {showCouponDropdown && (
+                    <div className="absolute top-full right-0 mt-2 w-96 glass-card rounded-lg p-4 shadow-lg z-50 border border-border">
+                      <div className="space-y-4">
+                        <div className="flex gap-2 min-w-0">
+                          <Input
+                            placeholder="Enter coupon code (e.g., ARAM8893)"
+                            value={couponSearchCode}
+                            onChange={(e) => {
+                              setCouponSearchCode(e.target.value.toUpperCase());
+                              setHasSearchedCoupon(false);
+                            }}
+                            onKeyPress={handleCouponKeyPress}
+                            className="font-mono text-lg h-12"
+                            autoFocus
+                          />
+                          <Button
+                            onClick={handleCouponSearch}
+                            disabled={isCouponLoading || checkingCoupon}
+                            className="h-12 px-6"
+                            variant="glow"
+                          >
+                            {(isCouponLoading || checkingCoupon) ? (
+                              <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                            ) : (
+                              <Search className="h-5 w-5" />
+                            )}
+                          </Button>
+                        </div>
+
+                        {/* Show checking state */}
+                        {(isCouponLoading || checkingCoupon) && (
+                          <div className="flex justify-center p-4">
+                            <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                          </div>
+                        )}
+
+                        {/* Show error when coupon not found */}
+                        {hasSearchedCoupon && couponIsFetched && !checkingCoupon && !isValidCoupon && (
+                          <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                            <div className="flex items-center gap-3">
+                              <XCircle className="h-6 w-6 text-destructive" />
+                              <div>
+                                <h4 className="font-semibold text-sm text-destructive mb-1">
+                                  Agent Not Found
+                                </h4>
+                                <p className="text-destructive/80 text-xs">
+                                  The coupon code "{couponSearchTrigger}" is not associated with any registered agent.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1535,7 +1621,9 @@ const Index: React.FC = () => {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
-                    placeholder="Search by mobile, name, amount, agent..."
+                    placeholder={transactionUserType === "b2b"
+                      ? "Search by name, userId, amount, school code..."
+                      : "Search by mobile, name, amount, agent..."}
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value.trim().toLowerCase());
@@ -1550,13 +1638,14 @@ const Index: React.FC = () => {
                 <DateRangePicker
                   dateRange={dateRange}
                   onDateRangeChange={onDateRangeChange}
+                  disabled={transactionUserType === "b2b" && Boolean(debouncedSchoolCode)}
                 />
               </div>
             </div>
           </div>
 
           {/* Show transactions section when there's a search query OR date filter is changed */}
-          {(hasSearchQuery || !isDefaultDateRange) && (
+          {(transactionUserType === "b2b" || hasSearchQuery || !isDefaultDateRange) && (
             <>
               {/* Showing X-Y of Z - Only show when we have transactions */}
               {totalCount > 0 && (
@@ -1582,16 +1671,18 @@ const Index: React.FC = () => {
                       <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
                       Refresh
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={refreshPaymentData}
-                      disabled={isFetching}
-                      className="gap-2"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-                      Refresh Agent Data
-                    </Button>
+                    {transactionUserType === "b2c" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={refreshPaymentData}
+                        disabled={isFetching}
+                        className="gap-2"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                        Refresh Agent Data
+                      </Button>
+                    )}
                     <ExportButton
                       dateRange={dateRange}
                       searchQuery={searchQuery}
@@ -1620,6 +1711,9 @@ const Index: React.FC = () => {
                 isUpdatingPayment={isUpdatingPayment}
                 // Role-based props
                 userRole={userRole || 'admin'}
+                b2bMode={transactionUserType === "b2b"}
+                showCouponFields={transactionUserType === "b2c"}
+                showAgentFields={transactionUserType === "b2c"}
               />
 
               {/* Pagination - only show when we have transactions */}

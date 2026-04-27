@@ -10,12 +10,20 @@ interface NavbarProps {
   totalTransactions: number;
   allTransactions: any[];
   isLoading?: boolean;
+  ignoreDateFilter?: boolean;
+  summaryCounts?: {
+    total: number;
+    success: number;
+    failed: number;
+  } | null;
 }
 
 const Navbar = ({
   totalTransactions,
   allTransactions = [],
   isLoading = false,
+  ignoreDateFilter = false,
+  summaryCounts = null,
 }: NavbarProps) => {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(false);
@@ -267,8 +275,9 @@ const Navbar = ({
       };
     }
 
-    // 1. Filter by date range (Nov 10, 2025 to today)
-    const dateFiltered = filterByDateRange(completeData);
+    // 1. Filter by date range (Nov 10, 2025 to today) unless the parent
+    // explicitly tells us the dataset is already school-code filtered.
+    const dateFiltered = ignoreDateFilter ? completeData : filterByDateRange(completeData);
 
     // 2. Separate success and failed transactions BEFORE deduplication
     const allSuccess = dateFiltered.filter(t =>
@@ -309,7 +318,7 @@ const Navbar = ({
       allTimeFailedWithCoupon: failedWithCoupon.length,
       allTimeFailedWithoutCoupon: uniqueFailed.length - failedWithCoupon.length,
     };
-  }, [completeData, dataLoading]);
+  }, [completeData, dataLoading, ignoreDateFilter]);
 
   // -----------------------
   // Process TODAY's data from COMPLETE DATA (not filtered data)
@@ -422,14 +431,14 @@ const Navbar = ({
           <div className="flex items-center gap-8">
             <CountCard
               label="Total"
-              count={allTimeCount}
+              count={summaryCounts?.total ?? allTimeCount}
               withCoupon={allTimeWithCouponCount}
               withoutCoupon={allTimeWithoutCouponCount}
               isLoading={dataLoading || isLoading}
             />
             <CountCard
               label="Success"
-              count={allTimeSuccessCount}
+              count={summaryCounts?.success ?? allTimeSuccessCount}
               withCoupon={allTimeSuccessWithCoupon}
               withoutCoupon={allTimeSuccessWithoutCoupon}
               isLoading={dataLoading || isLoading}
@@ -437,7 +446,7 @@ const Navbar = ({
             />
             <CountCard
               label="Failed"
-              count={allTimeFailedCount}
+              count={summaryCounts?.failed ?? allTimeFailedCount}
               withCoupon={allTimeFailedWithCoupon}
               withoutCoupon={allTimeFailedWithoutCoupon}
               isLoading={dataLoading || isLoading}
