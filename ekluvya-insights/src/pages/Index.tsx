@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 
 const TOPPER_PAGE_SIZE = 10;
 const LOCATION_PAGE_SIZE = 15;
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 type SortDirection = "desc" | "asc";
 
 // Helper function to create November 10th date for previous year
@@ -258,7 +258,7 @@ const Index: React.FC = () => {
         throw new Error("Failed to fetch transactions");
       }
 
-      const transactions = transactionsJson.data;
+      const transactions: any[] = transactionsJson.data as any[];
       console.log(`📋 Found ${transactions.length} transactions`);
 
       // 2. Get payment data for all transactions
@@ -424,15 +424,6 @@ const Index: React.FC = () => {
     fetchAllTopperData();
   }, [transactionUserType, debouncedSchoolCode]);
 
-  // Refresh payment data periodically (every 30 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refreshPaymentData();
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
-  }, [allTransactionsData]);
-
   // Fetch total agents count
   useEffect(() => {
     const fetchAgentCount = async () => {
@@ -452,8 +443,6 @@ const Index: React.FC = () => {
     fetchAgentCount();
   }, []);
 
-  const isClientSideMode = true;
-
   // Reset to page 1 on any filter change
   useEffect(() => {
     setPage(1);
@@ -462,11 +451,12 @@ const Index: React.FC = () => {
   }, [statusFilter, searchQuery, dateRange, couponFilter, transactionUserType, debouncedSchoolCode]);
 
   const { data, isLoading, error, refetch, isFetching } = useTransactions({
-    page: isClientSideMode ? 1 : page,
-    limit: isClientSideMode ? 5000 : PAGE_SIZE,
+    page,
+    limit: PAGE_SIZE,
     dateRange,
     coupon: "",
     sortOrder: sortDirection,
+    status: statusFilter,
     userType: transactionUserType,
     schoolCode: debouncedSchoolCode,
   });
@@ -511,73 +501,6 @@ const Index: React.FC = () => {
 
   const baseList = searchedList;
 
-  const dedupeByUser = (transactions: any[]) => {
-    console.log("🔄 Starting dedupeByUser with", transactions.length, "transactions");
-
-    const userMap = new Map<string, any[]>();
-
-    for (const t of transactions) {
-      const mobile = t.phone || t.userPhone || "";
-      const email = t.email || t.userEmail || "";
-      const key = email || mobile;
-
-      if (!key) {
-        continue;
-      }
-
-      if (!userMap.has(key)) {
-        userMap.set(key, []);
-      }
-      userMap.get(key)!.push(t);
-    }
-
-    console.log(`Found ${userMap.size} unique users`);
-
-    const result: any[] = [];
-
-    userMap.forEach((userTransactions, key) => {
-      const successTx = userTransactions.filter(t => t.paymentStatus === 2);
-      const failedTx = userTransactions.filter(t => t.paymentStatus === 3);
-      const otherTx = userTransactions.filter(t => ![2, 3].includes(t.paymentStatus));
-
-      if (successTx.length > 0) {
-        const latestSuccess = successTx.sort((a, b) => {
-          const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
-          const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
-          return db - da;
-        })[0];
-        result.push(latestSuccess);
-      }
-
-      if (failedTx.length > 0) {
-        const latestFailed = failedTx.sort((a, b) => {
-          const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
-          const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
-          return db - da;
-        })[0];
-        result.push(latestFailed);
-      }
-
-      otherTx.forEach(t => result.push(t));
-
-      const totalForUser = userTransactions.length;
-      const keptForUser = (successTx.length > 0 ? 1 : 0) + (failedTx.length > 0 ? 1 : 0) + otherTx.length;
-      if (totalForUser > keptForUser) {
-        console.log(`User ${key}: ${totalForUser} transactions → ${keptForUser} kept`);
-      }
-    });
-
-    result.sort((a: any, b: any) => {
-      const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
-      const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
-      return sortDirection === "desc" ? db - da : da - db;
-    });
-
-    console.log(`✅ Dedupe complete: ${transactions.length} → ${result.length}`);
-
-    return result;
-  };
-
   // Update filtered transactions - ENSURE PAYMENT DATA AND AGENT ACCOUNT NUMBERS ARE INCLUDED
   useEffect(() => {
     console.log("🔍 Starting filteredTransactions calculation");
@@ -610,13 +533,12 @@ const Index: React.FC = () => {
       return sortDirection === "desc" ? db - da : da - db;
     });
 
-    console.log("List before dedupe:", list.length);
+    console.log("List before payment/account merge:", list.length);
 
-    // Dedupe and ENSURE PAYMENT DATA AND AGENT ACCOUNT NUMBERS ARE INCLUDED
-    const dedupedList = dedupeByUser(list).map(transaction => ({
+    const mergedList = list.map(transaction => ({
       ...transaction,
       // Merge with payment data from our global state
-      ...transactionsPaymentData[transaction._id] || {},
+      ...(transactionsPaymentData[transaction._id] || {}),
       // Get agent account details from agentsMap
       agent_account_no: agentsMap[transaction.agentName]?.accountNo || transaction.agent_account_no || '',
       agent_bank_name: agentsMap[transaction.agentName]?.bankName || transaction.agent_bank_name || '',
@@ -624,28 +546,27 @@ const Index: React.FC = () => {
       agent_branch_name: agentsMap[transaction.agentName]?.branchName || transaction.agent_branch_name || ''
     }));
 
-    console.log("List after dedupe with payment data and agent account numbers:", dedupedList.length);
-    setFilteredTransactions(dedupedList);
+    console.log("List after payment/account merge:", mergedList.length);
+    setFilteredTransactions(mergedList);
   }, [baseList, statusFilter, couponFilter, sortDirection, transactionsPaymentData, agentsMap]);
 
-  // Update displayed transactions
+  // The backend already returns a single page of transactions.
+  // Keep the displayed list on that page and only assign serial numbers.
   useEffect(() => {
     const startIndex = (page - 1) * PAGE_SIZE;
-    const newDisplayedTransactions = filteredTransactions
-      .slice(startIndex, startIndex + PAGE_SIZE)
-      .map((transaction, index) => ({
-        ...transaction,
-        serialNumber: startIndex + index + 1
-      }));
+    const newDisplayedTransactions = filteredTransactions.map((transaction, index) => ({
+      ...transaction,
+      serialNumber: startIndex + index + 1
+    }));
 
     setDisplayedTransactions(newDisplayedTransactions);
   }, [filteredTransactions, page]);
 
   // Pagination
-  const totalCount = filteredTransactions.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalCount = data?.total ?? filteredTransactions.length;
+  const totalPages = data?.pages ?? Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * PAGE_SIZE, totalCount);
+  const rangeEnd = totalCount === 0 ? 0 : rangeStart + displayedTransactions.length - 1;
 
   const agentStats = useMemo(() => {
     const map = new Map<
@@ -1251,11 +1172,10 @@ const Index: React.FC = () => {
     const next: SortDirection = sortDirection === "desc" ? "asc" : "desc";
     setSortDirection(next);
     setPage(1);
-    refetch();
   };
 
   // Only show loading when actually fetching from server
-  const showLoading = isFetching && !isClientSideMode;
+  const showLoading = isLoading || isFetching;
 
   // Check if there's a search query to show transactions
   const hasSearchQuery = searchQuery.trim().length > 0;
@@ -1717,7 +1637,7 @@ const Index: React.FC = () => {
               />
 
               {/* Pagination - only show when we have transactions */}
-              {filteredTransactions.length > 0 && totalPages > 1 && (
+              {totalCount > 0 && totalPages > 1 && (
                 <Pagination
                   currentPage={page}
                   totalPages={totalPages}
@@ -1725,9 +1645,6 @@ const Index: React.FC = () => {
                     setPage(p);
                     setSelectedTransactions(new Set());
                     setSelectAll(false);
-                    if (!isClientSideMode) {
-                      refetch();
-                    }
                   }}
                   isLoading={showLoading}
                 />
