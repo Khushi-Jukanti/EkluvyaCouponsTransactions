@@ -470,11 +470,15 @@ const Index: React.FC = () => {
 
   // Client-side search
   const searchedList = useMemo(() => {
-    if (!data?.data || !searchQuery.trim()) return data?.data || [];
+    const searchSource = searchQuery.trim()
+      ? (allTransactionsData.length > 0 ? allTransactionsData : data?.data || [])
+      : (data?.data || []);
+
+    if (!searchSource.length || !searchQuery.trim()) return searchSource;
 
     const q = searchQuery.toLowerCase().trim();
 
-    return data.data.filter((t: any) => {
+    return searchSource.filter((t: any) => {
       const phone = String(t.phone ?? t.userPhone ?? "").toLowerCase();
       const userName = String(t.username ?? t.userName ?? t.name ?? "").toLowerCase();
       const amount = String(t.amount ?? "").toLowerCase();
@@ -497,7 +501,10 @@ const Index: React.FC = () => {
         userType.includes(q)
       );
     });
-  }, [data?.data, searchQuery]);
+  }, [allTransactionsData, data?.data, searchQuery]);
+
+  // Check if there's a search query to show transactions
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   const baseList = searchedList;
 
@@ -554,17 +561,23 @@ const Index: React.FC = () => {
   // Keep the displayed list on that page and only assign serial numbers.
   useEffect(() => {
     const startIndex = (page - 1) * PAGE_SIZE;
-    const newDisplayedTransactions = filteredTransactions.map((transaction, index) => ({
+    const pageTransactions = hasSearchQuery
+      ? filteredTransactions.slice(startIndex, startIndex + PAGE_SIZE)
+      : filteredTransactions;
+
+    const newDisplayedTransactions = pageTransactions.map((transaction, index) => ({
       ...transaction,
       serialNumber: startIndex + index + 1
     }));
 
     setDisplayedTransactions(newDisplayedTransactions);
-  }, [filteredTransactions, page]);
+  }, [filteredTransactions, page, hasSearchQuery]);
 
   // Pagination
-  const totalCount = data?.total ?? filteredTransactions.length;
-  const totalPages = data?.pages ?? Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalCount = hasSearchQuery ? filteredTransactions.length : (data?.total ?? filteredTransactions.length);
+  const totalPages = hasSearchQuery
+    ? Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+    : (data?.pages ?? Math.max(1, Math.ceil(totalCount / PAGE_SIZE)));
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = totalCount === 0 ? 0 : rangeStart + displayedTransactions.length - 1;
 
@@ -1176,9 +1189,6 @@ const Index: React.FC = () => {
 
   // Only show loading when actually fetching from server
   const showLoading = isLoading || isFetching;
-
-  // Check if there's a search query to show transactions
-  const hasSearchQuery = searchQuery.trim().length > 0;
 
   // Check if date range is different from default
   const isDefaultDateRange =
