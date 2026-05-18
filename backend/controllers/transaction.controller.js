@@ -232,7 +232,81 @@ const getAllTransactions = async (req, res) => {
       },
     });
 
-    // Count total matching documents (use same pipeline up to $project)
+    // Remove duplicate transactions before counting, summarizing, and paging.
+    // Prefer a stable transaction identifier when available, otherwise fall
+    // back to a composite of the visible transaction fields.
+    pipeline.push({
+      $addFields: {
+        dedupeKey: {
+          $let: {
+            vars: {
+              txKey: {
+                $trim: {
+                  input: { $ifNull: ["$transactionId", ""] },
+                },
+              },
+              createdKey: {
+                $ifNull: ["$transaction_date", new Date(0)],
+              },
+              userKey: {
+                $toLower: { $ifNull: ["$userName", ""] },
+              },
+              phoneKey: {
+                $ifNull: ["$phone", ""],
+              },
+              emailKey: {
+                $toLower: { $ifNull: ["$email", ""] },
+              },
+              couponKey: {
+                $toUpper: { $ifNull: ["$couponText", ""] },
+              },
+              amountKey: {
+                $toString: { $ifNull: ["$amount", ""] },
+              },
+            },
+            in: {
+              $cond: [
+                { $ne: ["$$txKey", ""] },
+                "$$txKey",
+                {
+                  $concat: [
+                    "$$userKey",
+                    "|",
+                    "$$phoneKey",
+                    "|",
+                    "$$emailKey",
+                    "|",
+                    {
+                      $dateToString: {
+                        format: "%Y-%m-%dT%H:%M:%S.%LZ",
+                        date: "$$createdKey",
+                        timezone: "Asia/Kolkata",
+                      },
+                    },
+                    "|",
+                    "$$couponKey",
+                    "|",
+                    "$$amountKey",
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    pipeline.push({ $sort: { createdDate: sortOrder, _id: 1 } });
+    pipeline.push({
+      $group: {
+        _id: "$dedupeKey",
+        doc: { $first: "$$ROOT" },
+      },
+    });
+    pipeline.push({ $replaceRoot: { newRoot: "$doc" } });
+    pipeline.push({ $project: { dedupeKey: 0 } });
+
+    // Count total matching documents after duplicate removal.
     const countPipeline = [...pipeline, { $count: "total" }];
     const countResult = await UserPaymentTransaction.aggregate(countPipeline);
     const total =
