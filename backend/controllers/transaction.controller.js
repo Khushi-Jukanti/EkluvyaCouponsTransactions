@@ -11,6 +11,76 @@ const toInt = (v, defaultVal) => {
 const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const toText = (value) => String(value ?? "").trim();
+
+const getDisplaySignature = (transaction) => {
+  const phone = toText(transaction.phone || transaction.userPhone);
+  const email = toText(transaction.email || transaction.userEmail).toLowerCase();
+  const agent = toText(transaction.agentName).toLowerCase();
+  const school = toText(transaction.school_code).toLowerCase();
+  const coupon = toText(
+    transaction.couponText || transaction.coupon_text || transaction.coupon_code || transaction.coupon
+  ).toUpperCase();
+  const amount = toText(transaction.amount);
+  const status = toText(transaction.paymentStatus ?? transaction.status ?? transaction.paymentStatusText).toLowerCase();
+
+  return [phone, email, agent, school, coupon, amount, status].join("|");
+};
+
+const getSignatureScore = (transaction) => {
+  const fields = [
+    transaction.userName,
+    transaction.phone,
+    transaction.email,
+    transaction.agentName,
+    transaction.school_code,
+    transaction.couponText,
+    transaction.amount,
+    transaction.paymentStatus,
+    transaction.date_ist,
+  ];
+
+  return fields.reduce((score, field) => {
+    const value = toText(field);
+    return score + (value ? 1 : 0);
+  }, 0);
+};
+
+const getSortTime = (transaction) => {
+  const raw = transaction.createdDate || transaction.transaction_date || transaction.date_ist;
+  if (!raw) return 0;
+  if (raw instanceof Date) return raw.getTime();
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const dedupeTransactions = (transactions = []) => {
+  const map = new Map();
+
+  for (const transaction of transactions) {
+    const key = getDisplaySignature(transaction);
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, transaction);
+      continue;
+    }
+
+    const existingScore = getSignatureScore(existing);
+    const currentScore = getSignatureScore(transaction);
+    if (currentScore > existingScore) {
+      map.set(key, transaction);
+      continue;
+    }
+
+    if (currentScore === existingScore && getSortTime(transaction) > getSortTime(existing)) {
+      map.set(key, transaction);
+    }
+  }
+
+  return Array.from(map.values());
+};
+
 const getAllTransactions = async (req, res) => {
   try {
     const {
@@ -104,7 +174,6 @@ const getAllTransactions = async (req, res) => {
           as: "user",
         },
       },
-      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "payments",
@@ -113,7 +182,12 @@ const getAllTransactions = async (req, res) => {
           as: "payment",
         },
       },
-      { $unwind: { path: "$payment", preserveNullAndEmptyArrays: true } }
+      {
+        $addFields: {
+          user: { $arrayElemAt: ["$user", 0] },
+          payment: { $arrayElemAt: ["$payment", 0] },
+        },
+      }
     );
 
     pipeline.push({
@@ -149,6 +223,7 @@ const getAllTransactions = async (req, res) => {
         transactionId: {
           $ifNull: ["$gud_transaction_id", "$payment.gudsho_receipt"],
         },
+        paymentId: { $toString: { $ifNull: ["$payment_id", ""] } },
         userName: {
           $trim: {
             input: {
@@ -232,6 +307,8 @@ const getAllTransactions = async (req, res) => {
       },
     });
 
+    const rawPipeline = [...pipeline];
+
     // Remove duplicate transactions before counting, summarizing, and paging.
     // Prefer a stable transaction identifier when available, otherwise fall
     // back to a composite of the visible transaction fields.
@@ -245,11 +322,9 @@ const getAllTransactions = async (req, res) => {
                   input: { $ifNull: ["$transactionId", ""] },
                 },
               },
+              schoolKey: { $toLower: { $ifNull: ["$school_code", ""] } },
               createdKey: {
                 $ifNull: ["$transaction_date", new Date(0)],
-              },
-              userKey: {
-                $toLower: { $ifNull: ["$userName", ""] },
               },
               phoneKey: {
                 $ifNull: ["$phone", ""],
@@ -257,11 +332,20 @@ const getAllTransactions = async (req, res) => {
               emailKey: {
                 $toLower: { $ifNull: ["$email", ""] },
               },
+              schoolKey: { $toLower: { $ifNull: ["$school_code", ""] } },
               couponKey: {
                 $toUpper: { $ifNull: ["$couponText", ""] },
               },
               amountKey: {
                 $toString: { $ifNull: ["$amount", ""] },
+              },
+              paymentKey: {
+                $trim: {
+                  input: { $ifNull: ["$paymentId", ""] },
+                },
+              },
+              statusKey: {
+                $toString: { $ifNull: ["$paymentStatus", ""] },
               },
             },
             in: {
@@ -269,24 +353,32 @@ const getAllTransactions = async (req, res) => {
                 { $ne: ["$$txKey", ""] },
                 "$$txKey",
                 {
-                  $concat: [
-                    "$$userKey",
-                    "|",
-                    "$$phoneKey",
-                    "|",
-                    "$$emailKey",
-                    "|",
+                  $cond: [
+                    { $ne: ["$$paymentKey", ""] },
+                    "$$paymentKey",
                     {
-                      $dateToString: {
-                        format: "%Y-%m-%dT%H:%M:%S.%LZ",
-                        date: "$$createdKey",
-                        timezone: "Asia/Kolkata",
-                      },
+                      $concat: [
+                        "$$phoneKey",
+                        "|",
+                        "$$emailKey",
+                        "|",
+                        "$$schoolKey",
+                        "|",
+                        {
+                          $dateToString: {
+                            format: "%Y-%m-%dT%H:%M:%S",
+                            date: "$$createdKey",
+                            timezone: "Asia/Kolkata",
+                          },
+                        },
+                        "|",
+                        "$$couponKey",
+                        "|",
+                        "$$amountKey",
+                        "|",
+                        "$$statusKey",
+                      ],
                     },
-                    "|",
-                    "$$couponKey",
-                    "|",
-                    "$$amountKey",
                   ],
                 },
               ],
@@ -306,52 +398,11 @@ const getAllTransactions = async (req, res) => {
     pipeline.push({ $replaceRoot: { newRoot: "$doc" } });
     pipeline.push({ $project: { dedupeKey: 0 } });
 
-    // Count total matching documents after duplicate removal.
-    const countPipeline = [...pipeline, { $count: "total" }];
-    const countResult = await UserPaymentTransaction.aggregate(countPipeline);
-    const total =
-      countResult && countResult[0] && countResult[0].total
-        ? countResult[0].total
-        : 0;
+    const rawData = await UserPaymentTransaction.aggregate(rawPipeline);
 
-    const summaryPipeline = [
-      ...pipeline,
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          success: {
-            $sum: {
-              $cond: [{ $eq: ["$paymentStatus", 2] }, 1, 0],
-            },
-          },
-          failed: {
-            $sum: {
-              $cond: [{ $eq: ["$paymentStatus", 3] }, 1, 0],
-            },
-          },
-        },
-      },
-    ];
-    const summaryResult = await UserPaymentTransaction.aggregate(summaryPipeline);
-    const summary =
-      summaryResult && summaryResult[0]
-        ? {
-            total: summaryResult[0].total || 0,
-            success: summaryResult[0].success || 0,
-            failed: summaryResult[0].failed || 0,
-          }
-        : { total: 0, success: 0, failed: 0 };
-
-    // Now apply sort, skip and limit to fetch page
-    pipeline.push({ $sort: { createdDate: sortOrder } });
-    pipeline.push({ $skip: skip });
-    pipeline.push({ $limit: limitNum });
-
-    const data = await UserPaymentTransaction.aggregate(pipeline);
-
-    // Enrich agent info from global map (unchanged)
-    const enrichedData = data.map((item) => {
+    // Enrich agent info from global map before deduping so the display
+    // signature uses the same row content the UI shows.
+    const enrichedRawData = rawData.map((item) => {
       const couponCode = item.couponText;
       const agent = couponCode
         ? (global.AGENT_COUPON_MAP || {})[couponCode.toUpperCase()]
@@ -368,14 +419,34 @@ const getAllTransactions = async (req, res) => {
       };
     });
 
+    const uniqueData = dedupeTransactions(enrichedRawData).sort((a, b) => {
+      const aTime = getSortTime(a);
+      const bTime = getSortTime(b);
+      return sortOrder === 1 ? aTime - bTime : bTime - aTime;
+    });
+
+    const total = uniqueData.length;
+    const summary = uniqueData.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        const status = Number(item.paymentStatus);
+        if (status === 2) acc.success += 1;
+        if (status === 3) acc.failed += 1;
+        return acc;
+      },
+      { total: 0, success: 0, failed: 0 }
+    );
+
+    const pagedData = uniqueData.slice(skip, skip + limitNum);
+
     res.json({
       success: true,
-      count: enrichedData.length,
+      count: pagedData.length,
       total,
       summary,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
-      data: enrichedData,
+      data: pagedData,
     });
   } catch (err) {
     console.error("Transaction Error:", err);

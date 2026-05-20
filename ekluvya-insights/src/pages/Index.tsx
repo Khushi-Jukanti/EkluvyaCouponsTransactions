@@ -31,6 +31,67 @@ const getNovember10thDate = (): Date => {
   return new Date(previousYear, 10, 10);
 };
 
+const getTransactionKey = (t: any): string => {
+  if (!t) return "";
+
+  const phone = String(t.phone || t.userPhone || "").trim();
+  const email = String(t.email || t.userEmail || "").trim().toLowerCase();
+  const agent = String(t.agentName || "").trim().toLowerCase();
+  const coupon = String(t.couponText || t.coupon_text || t.coupon_code || t.coupon || "").trim().toUpperCase();
+  const amount = String(t.amount ?? "").trim();
+  const school = String(t.school_code || "").trim().toLowerCase();
+  const status = String(t.paymentStatus ?? t.status ?? t.paymentStatusText ?? "").trim().toLowerCase();
+
+  if (!phone && !email && !school && !coupon && !amount) {
+    return "";
+  }
+
+  return `display:${phone}|${email}|${school}|${coupon}|${amount}|${status}|${agent}`;
+};
+
+const getTransactionSortTime = (transaction: any): number => {
+  const raw = transaction?.date_ist ?? transaction?.createdAt ?? transaction?.createdDate;
+
+  if (!raw) return 0;
+  if (raw instanceof Date) return raw.getTime();
+  if (typeof raw === "number") return raw;
+
+  const text = String(raw).trim();
+  const istDate = parse(text, "dd-MM-yyyy HH:mm:ss", new Date());
+  if (isValid(istDate)) {
+    return istDate.getTime();
+  }
+
+  const fallback = new Date(text);
+  return isValid(fallback) ? fallback.getTime() : 0;
+};
+
+const dedupeTransactionsByIdentity = (transactions: any[]): any[] => {
+  const map = new Map<string, any>();
+
+  for (const transaction of transactions || []) {
+    const key = getTransactionKey(transaction);
+    if (!key) {
+      continue;
+    }
+
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, transaction);
+      continue;
+    }
+
+    const existingDate = getTransactionSortTime(existing);
+    const currentDate = getTransactionSortTime(transaction);
+
+    if (currentDate >= existingDate) {
+      map.set(key, transaction);
+    }
+  }
+
+  return Array.from(map.values());
+};
+
 const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -260,13 +321,15 @@ const Index: React.FC = () => {
 
       const transactions: any[] = transactionsJson.data as any[];
       console.log(`📋 Found ${transactions.length} transactions`);
+      const uniqueTransactions = dedupeTransactionsByIdentity(transactions);
+      console.log(`✅ Reduced to ${uniqueTransactions.length} unique transactions`);
 
       // 2. Get payment data for all transactions
-      const transactionIds = transactions.map((t: any) => t._id).filter(Boolean);
+      const transactionIds = uniqueTransactions.map((t: any) => t._id).filter(Boolean);
       const paymentData = await fetchPaymentDataForTransactions(transactionIds);
 
       // 3. Get agent account numbers - FIX TYPE HERE
-      const agentNames: string[] = [...new Set(transactions
+      const agentNames: string[] = [...new Set(uniqueTransactions
         .map((t: any) => t.agentName)
         .filter((name: any): name is string =>
           typeof name === 'string' &&
@@ -278,7 +341,7 @@ const Index: React.FC = () => {
       const agentAccountNumbers = await fetchAgentAccountNumbers(agentNames);
 
       // 4. Merge the data
-      const mergedTransactions = transactions.map((transaction: any) => {
+      const mergedTransactions = uniqueTransactions.map((transaction: any) => {
         const payment = paymentData[transaction._id] || {};
         const agentName = transaction.agentName;
         const agentAccount = agentAccountNumbers[agentName] || {};
@@ -332,12 +395,13 @@ const Index: React.FC = () => {
       const agentAccountNumbers = await fetchAgentAccountNumbers(agentNames);
       setAgentsMap(agentAccountNumbers);
 
-      const transactionIds = allTransactionsData.map(t => t._id).filter(Boolean);
-      const paymentData = await fetchPaymentDataForTransactions(transactionIds);
+      const uniqueTransactions = dedupeTransactionsByIdentity(allTransactionsData);
+      const uniqueTransactionIds = uniqueTransactions.map(t => t._id).filter(Boolean);
+      const paymentData = await fetchPaymentDataForTransactions(uniqueTransactionIds);
       setTransactionsPaymentData(paymentData);
 
       // Update all transactions with payment data and account numbers
-      const updatedTransactions = allTransactionsData.map(transaction => {
+      const updatedTransactions = uniqueTransactions.map(transaction => {
         const agentName = transaction.agentName;
         const agentAccount = agentAccountNumbers[agentName] || {};
 
@@ -412,8 +476,9 @@ const Index: React.FC = () => {
           const res = await fetch(fetchTransactionsUrl(10000));
           const json = await res.json();
           if (json.success && json.data) {
-            setAllTopperData(json.data);
-            setAllTransactionsData(json.data);
+            const fallbackTransactions = dedupeTransactionsByIdentity(json.data);
+            setAllTopperData(fallbackTransactions);
+            setAllTransactionsData(fallbackTransactions);
           }
         } catch (fallbackErr) {
           console.error("Fallback also failed:", fallbackErr);
@@ -470,9 +535,9 @@ const Index: React.FC = () => {
 
   // Client-side search
   const searchedList = useMemo(() => {
-    const searchSource = searchQuery.trim()
-      ? (allTransactionsData.length > 0 ? allTransactionsData : data?.data || [])
-      : (data?.data || []);
+      const searchSource = searchQuery.trim()
+      ? dedupeTransactionsByIdentity(allTransactionsData.length > 0 ? allTransactionsData : data?.data || [])
+      : dedupeTransactionsByIdentity(data?.data || []);
 
     if (!searchSource.length || !searchQuery.trim()) return searchSource;
 
@@ -513,7 +578,7 @@ const Index: React.FC = () => {
     console.log("🔍 Starting filteredTransactions calculation");
     console.log("Base list length:", baseList.length);
 
-    let list = [...baseList];
+    let list = dedupeTransactionsByIdentity([...baseList]);
 
     if (statusFilter !== "all") {
       const targetStatus = statusFilter === "success" ? 2 : 3;
@@ -557,13 +622,18 @@ const Index: React.FC = () => {
     setFilteredTransactions(mergedList);
   }, [baseList, statusFilter, couponFilter, sortDirection, transactionsPaymentData, agentsMap]);
 
+  const uniqueFilteredTransactions = useMemo(
+    () => dedupeTransactionsByIdentity(filteredTransactions),
+    [filteredTransactions]
+  );
+
   // The backend already returns a single page of transactions.
   // Keep the displayed list on that page and only assign serial numbers.
   useEffect(() => {
     const startIndex = (page - 1) * PAGE_SIZE;
     const pageTransactions = hasSearchQuery
-      ? filteredTransactions.slice(startIndex, startIndex + PAGE_SIZE)
-      : filteredTransactions;
+      ? uniqueFilteredTransactions.slice(startIndex, startIndex + PAGE_SIZE)
+      : uniqueFilteredTransactions;
 
     const newDisplayedTransactions = pageTransactions.map((transaction, index) => ({
       ...transaction,
@@ -571,10 +641,10 @@ const Index: React.FC = () => {
     }));
 
     setDisplayedTransactions(newDisplayedTransactions);
-  }, [filteredTransactions, page, hasSearchQuery]);
+  }, [uniqueFilteredTransactions, page, hasSearchQuery]);
 
   // Pagination
-  const totalCount = hasSearchQuery ? filteredTransactions.length : (data?.total ?? filteredTransactions.length);
+  const totalCount = hasSearchQuery ? uniqueFilteredTransactions.length : (data?.total ?? uniqueFilteredTransactions.length);
   const totalPages = hasSearchQuery
     ? Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
     : (data?.pages ?? Math.max(1, Math.ceil(totalCount / PAGE_SIZE)));
@@ -1242,6 +1312,11 @@ const Index: React.FC = () => {
     });
   }, [displayedTransactions, transactionsPaymentData, agentsMap]);
 
+  const uniqueVisibleTransactions = useMemo(
+    () => dedupeTransactionsByIdentity(enhancedTransactions),
+    [enhancedTransactions]
+  );
+
   // Show loading while fetching user info
   if (userLoading) {
     return (
@@ -1623,7 +1698,7 @@ const Index: React.FC = () => {
               )}
 
               <TransactionsTable
-                transactions={enhancedTransactions}
+                transactions={uniqueVisibleTransactions}
                 isLoading={showLoading}
                 onCouponClick={handleCouponClick}
                 sortDirection={sortDirection}

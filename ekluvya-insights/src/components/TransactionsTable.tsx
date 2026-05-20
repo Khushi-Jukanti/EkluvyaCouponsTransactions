@@ -140,6 +140,29 @@ const TransactionsTable = ({
     return format(d, "yyyy-MM-dd");
   };
 
+  const getDisplayUserName = (transaction: Transaction & { serialNumber?: number }) => {
+    const name =
+      transaction.userName ||
+      transaction.username ||
+      transaction.first_name ||
+      (transaction as any).name ||
+      (transaction as any).full_name ||
+      "Unknown User";
+
+    const trimmed = String(name).trim();
+    return trimmed.length > 0 ? trimmed : "Unknown User";
+  };
+
+  const getDisplayPhone = (transaction: Transaction & { serialNumber?: number }) => {
+    const phone = String(transaction.phone || (transaction as any).userPhone || "").trim();
+    return phone.length > 0 ? phone : "—";
+  };
+
+  const getDisplayEmail = (transaction: Transaction & { serialNumber?: number }) => {
+    const email = String(transaction.email || (transaction as any).userEmail || "").trim();
+    return email.length > 0 ? email : "—";
+  };
+
   const shouldAllowPaymentEditing = (transaction: Transaction & { serialNumber?: number }) => {
     // Only accountants can edit
     if (userRole !== 'accountant') {
@@ -717,7 +740,7 @@ const TransactionsTable = ({
                           <User className="h-4 w-4 text-primary" />
                         </div>
                         <span className="font-medium">
-                          {transaction.userName}
+                          {getDisplayUserName(transaction)}
                         </span>
                       </div>
                     </TableCell>
@@ -725,7 +748,7 @@ const TransactionsTable = ({
                     <TableCell>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Phone className="h-3 w-3" />
-                        <span className="text-sm">{transaction.phone}</span>
+                        <span className="text-sm">{getDisplayPhone(transaction)}</span>
                       </div>
                     </TableCell>
 
@@ -733,7 +756,7 @@ const TransactionsTable = ({
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Mail className="h-3 w-3" />
                         <span className="text-sm truncate max-w-[150px]">
-                          {transaction.email}
+                          {getDisplayEmail(transaction)}
                         </span>
                       </div>
                     </TableCell>

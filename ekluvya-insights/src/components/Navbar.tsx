@@ -189,6 +189,24 @@ const Navbar = ({
     return code && code.trim() !== "" && code.toUpperCase() !== "N/A";
   };
 
+  const getTransactionKey = (t: any): string => {
+    if (!t) return "";
+
+    const phone = String(t.phone || t.userPhone || "").trim();
+    const email = String(t.email || t.userEmail || "").trim().toLowerCase();
+    const agent = String(t.agentName || "").trim().toLowerCase();
+    const coupon = String(t.couponText || t.coupon_text || t.coupon_code || t.coupon || "").trim().toUpperCase();
+    const amount = String(t.amount ?? "").trim();
+    const school = String(t.school_code || "").trim().toLowerCase();
+    const status = String(t.paymentStatus ?? t.status ?? t.paymentStatusText ?? "").trim().toLowerCase();
+
+    if (!phone && !email && !school && !coupon && !amount) {
+      return "";
+    }
+
+    return `display:${phone}|${email}|${school}|${coupon}|${amount}|${status}|${agent}`;
+  };
+
   // Fixed start date: November 10, 2025
   const FIXED_START_DATE = new Date(2025, 10, 10);
 
@@ -197,9 +215,7 @@ const Navbar = ({
     const map = new Map<string, any>();
 
     for (const t of transactions) {
-      const mobile = String(t.phone || t.userPhone || t.mobile || "").trim();
-      const email = String(t.email || t.userEmail || "").trim().toLowerCase();
-      const key = mobile || email;
+      const key = getTransactionKey(t);
 
       if (!key) continue;
 
