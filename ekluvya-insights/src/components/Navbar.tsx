@@ -410,10 +410,19 @@ const Navbar = ({
     };
   }, [completeData, dataLoading]);
 
+  const isAccountant = userRole === 'accountant';
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
-      <div className="container mx-auto flex h-20 items-center justify-between px-4">
+      <div
+        className={
+          isAccountant
+            ? "container mx-auto flex min-h-20 flex-col gap-4 px-4 py-4 xl:flex-row xl:items-center xl:justify-between"
+            : "container mx-auto flex h-20 items-center justify-between px-4"
+        }
+      >
         {/* LEFT SECTION: LOGO AND USER INFO */}
+        {!isAccountant && (
         <div className="flex items-center gap-4">
           {/* LOGO */}
           <div className="flex items-center gap-3">
@@ -440,65 +449,99 @@ const Navbar = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* MIDDLE SECTION: COUNTS */}
-        <div className="flex items-center gap-8">
+        <div
+          className={
+            isAccountant
+              ? "w-full min-w-0 overflow-x-auto xl:overflow-visible"
+              : "flex items-center gap-8"
+          }
+        >
           {/* ALL TIME COUNTS (Nov 10, 2025 to Today - Independent of filter) */}
-          <div className="flex items-center gap-8">
-            <CountCard
-              label="Total"
-              count={summaryCounts?.total ?? allTimeCount}
-              withCoupon={allTimeWithCouponCount}
-              withoutCoupon={allTimeWithoutCouponCount}
-              isLoading={dataLoading || isLoading}
-            />
-            <CountCard
-              label="Success"
-              count={summaryCounts?.success ?? allTimeSuccessCount}
-              withCoupon={allTimeSuccessWithCoupon}
-              withoutCoupon={allTimeSuccessWithoutCoupon}
-              isLoading={dataLoading || isLoading}
-              color="text-green-600 dark:text-green-400"
-            />
-            <CountCard
-              label="Failed"
-              count={summaryCounts?.failed ?? allTimeFailedCount}
-              withCoupon={allTimeFailedWithCoupon}
-              withoutCoupon={allTimeFailedWithoutCoupon}
-              isLoading={dataLoading || isLoading}
-              color="text-red-600 dark:text-red-400"
-            />
-          </div>
+          <div
+            className={
+              isAccountant
+                ? "flex min-w-max items-stretch gap-5 lg:min-w-0 lg:w-full lg:gap-0"
+                : "flex items-center gap-8"
+            }
+          >
+            <div
+              className={
+                isAccountant
+                  ? "grid grid-cols-3 gap-5 lg:flex-1 lg:gap-0"
+                  : "flex items-center gap-8"
+              }
+            >
+              <CountCard
+                label="Total"
+                count={summaryCounts?.total ?? allTimeCount}
+                withCoupon={allTimeWithCouponCount}
+                withoutCoupon={allTimeWithoutCouponCount}
+                isLoading={dataLoading || isLoading}
+                accountantLayout={isAccountant}
+              />
+              <CountCard
+                label="Success"
+                count={summaryCounts?.success ?? allTimeSuccessCount}
+                withCoupon={allTimeSuccessWithCoupon}
+                withoutCoupon={allTimeSuccessWithoutCoupon}
+                isLoading={dataLoading || isLoading}
+                color="text-green-600 dark:text-green-400"
+                accountantLayout={isAccountant}
+              />
+              <CountCard
+                label="Failed"
+                count={summaryCounts?.failed ?? allTimeFailedCount}
+                withCoupon={allTimeFailedWithCoupon}
+                withoutCoupon={allTimeFailedWithoutCoupon}
+                isLoading={dataLoading || isLoading}
+                color="text-red-600 dark:text-red-400"
+                accountantLayout={isAccountant}
+              />
+            </div>
 
-          {/* TODAY COUNTS (Based on current date, not filtered data) */}
-          <div className="flex items-center gap-8 border-l border-border/40 pl-6">
-            <CountCard
-              label="Today Total"
-              count={todayCount}
-              withCoupon={todayWithCouponCount}
-              withoutCoupon={todayWithoutCouponCount}
-              isLoading={dataLoading || isLoading}
-            />
-            <CountCard
-              label="Today Success"
-              count={todaySuccessCount}
-              withCoupon={todaySuccessWithCoupon}
-              withoutCoupon={todaySuccessWithoutCoupon}
-              isLoading={dataLoading || isLoading}
-              color="text-green-600 dark:text-green-400"
-            />
-            <CountCard
-              label="Today Failed"
-              count={todayFailedCount}
-              withCoupon={todayFailedWithCoupon}
-              withoutCoupon={todayFailedWithoutCoupon}
-              isLoading={dataLoading || isLoading}
-              color="text-red-600 dark:text-red-400"
-            />
+            {/* TODAY COUNTS (Based on current date, not filtered data) */}
+            <div
+              className={
+                isAccountant
+                  ? "grid grid-cols-3 gap-5 border-l border-border/40 pl-5 lg:flex-1 lg:gap-0 lg:pl-8"
+                  : "flex items-center gap-8 border-l border-border/40 pl-6"
+              }
+            >
+              <CountCard
+                label="Today Total"
+                count={todayCount}
+                withCoupon={todayWithCouponCount}
+                withoutCoupon={todayWithoutCouponCount}
+                isLoading={dataLoading || isLoading}
+                accountantLayout={isAccountant}
+              />
+              <CountCard
+                label="Today Success"
+                count={todaySuccessCount}
+                withCoupon={todaySuccessWithCoupon}
+                withoutCoupon={todaySuccessWithoutCoupon}
+                isLoading={dataLoading || isLoading}
+                color="text-green-600 dark:text-green-400"
+                accountantLayout={isAccountant}
+              />
+              <CountCard
+                label="Today Failed"
+                count={todayFailedCount}
+                withCoupon={todayFailedWithCoupon}
+                withoutCoupon={todayFailedWithoutCoupon}
+                isLoading={dataLoading || isLoading}
+                color="text-red-600 dark:text-red-400"
+                accountantLayout={isAccountant}
+              />
+            </div>
           </div>
         </div>
 
         {/* RIGHT SECTION: CONTROLS */}
+        {!isAccountant && (
         <div className="flex items-center gap-3">
           {/* ROLE INDICATOR FOR MOBILE */}
           {userRole && (
@@ -540,6 +583,7 @@ const Navbar = ({
             </Button>
           </div>
         </div>
+        )}
       </div>
     </header>
   );
@@ -552,6 +596,7 @@ interface CountCardProps {
   withoutCoupon?: number;
   isLoading?: boolean;
   color?: string;
+  accountantLayout?: boolean;
 }
 
 const CountCard = ({
@@ -561,18 +606,41 @@ const CountCard = ({
   withoutCoupon,
   isLoading,
   color,
+  accountantLayout = false,
 }: CountCardProps) => (
-  <div className="text-center">
+  <div
+    className={
+      accountantLayout
+        ? "min-w-24 px-2 text-center lg:text-left xl:px-4 2xl:px-6"
+        : "text-center"
+    }
+  >
     <p className={`text-xs ${color || "text-gray-600 dark:text-gray-400"}`}>{label}</p>
     {isLoading ? (
-      <div className="h-7 w-24 shimmer rounded mx-auto" />
+      <div
+        className={
+          accountantLayout
+            ? "h-7 w-20 shimmer rounded mx-auto lg:mx-0"
+            : "h-7 w-24 shimmer rounded mx-auto"
+        }
+      />
     ) : (
-      <p className={`font-bold text-2xl ${color || "text-gray-900 dark:text-white"}`}>
+      <p
+        className={`font-bold ${
+          accountantLayout ? "text-xl sm:text-2xl" : "text-2xl"
+        } ${color || "text-gray-900 dark:text-white"}`}
+      >
         {count.toLocaleString()}
       </p>
     )}
     {withCoupon !== undefined && withoutCoupon !== undefined && (
-      <div className="mt-2 flex items-center justify-center gap-3 text-xs">
+      <div
+        className={
+          accountantLayout
+            ? "mt-2 flex items-center justify-center gap-3 text-xs lg:justify-start"
+            : "mt-2 flex items-center justify-center gap-3 text-xs"
+        }
+      >
         <span className={`flex items-center gap-1 ${color || "text-blue-600 dark:text-blue-400"}`}>
           <Tag className="h-3 w-3" />
           {withCoupon.toLocaleString()}

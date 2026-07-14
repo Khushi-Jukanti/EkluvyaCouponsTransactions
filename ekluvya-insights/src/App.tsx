@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -13,8 +13,21 @@ import ForgotPassword from "./pages/ForgotPassword";
 import VerifyOtp from "./pages/VerifyOtp";
 import ResetPassword from "./pages/ResetPassword";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AccountantLayout from "@/layouts/AccountantLayout";
+import SubscriptionManagement from "@/pages/accountant/SubscriptionManagement";
+import SchoolStudentsManagement from "@/pages/accountant/SchoolStudentsManagement";
 
 const queryClient = new QueryClient();
+
+const AdminDashboardEntry = () => {
+  const role = localStorage.getItem("role");
+
+  if (role === "accountant") {
+    return <Navigate to="subscription-management" replace />;
+  }
+
+  return <Index />;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -43,10 +56,31 @@ const App = () => (
             path="/admin/dashboard"
             element={
               <ProtectedRoute role={["admin", "accountant"]}>
-                <Index />
+                <Outlet />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route
+              index
+              element={<AdminDashboardEntry />}
+            />
+            <Route
+              element={
+                <ProtectedRoute role="accountant">
+                  <AccountantLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route
+                path="subscription-management"
+                element={<SubscriptionManagement />}
+              />
+              <Route
+                path="school-students-management"
+                element={<SchoolStudentsManagement />}
+              />
+            </Route>
+          </Route>
 
           {/* AGENT ROUTES */}
           <Route
