@@ -5,6 +5,7 @@ const morgan = require('morgan');
 
 const transactionRoutes = require('./routes/transaction.routes');
 const couponRoutes = require('./routes/coupon.routes');
+const schoolStudentsRoutes = require('./routes/school-students.routes');
 const errorHandler = require('./middleware/errorHandler');
 // const AgentRoutes = require('./routes/agents')
 
@@ -20,6 +21,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/coupons', couponRoutes);
+app.use('/api/school-students', schoolStudentsRoutes);
 
 const AgentCouponService = require('./services/agentCoupon.service');
 

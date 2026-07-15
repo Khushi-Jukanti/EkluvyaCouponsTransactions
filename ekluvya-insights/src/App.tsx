@@ -16,6 +16,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AccountantLayout from "@/layouts/AccountantLayout";
 import SubscriptionManagement from "@/pages/accountant/SubscriptionManagement";
 import SchoolStudentsManagement from "@/pages/accountant/SchoolStudentsManagement";
+import ImportHistory from "@/pages/accountant/ImportHistory";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +79,10 @@ const App = () => (
               <Route
                 path="school-students-management"
                 element={<SchoolStudentsManagement />}
+              />
+              <Route
+                path="import-history"
+                element={<ImportHistory />}
               />
             </Route>
           </Route>

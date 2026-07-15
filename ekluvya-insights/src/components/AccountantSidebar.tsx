@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart3,
   GraduationCap,
+  History,
   LogOut,
   Menu,
   Moon,
@@ -22,6 +23,11 @@ const accountantNavItems = [
     label: "School & Students Management",
     to: "/admin/dashboard/school-students-management",
     icon: GraduationCap,
+  },
+  {
+    label: "Import History",
+    to: "/admin/dashboard/import-history",
+    icon: History,
   },
 ];
 
