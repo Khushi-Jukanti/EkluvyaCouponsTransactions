@@ -9,7 +9,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { FailedRow, ImportedUser, ImportType } from "./types";
-import { inferAdmissionNumber } from "./utils";
 
 type PreviewTableProps = {
   users: ImportedUser[];
@@ -17,56 +16,128 @@ type PreviewTableProps = {
   importType: ImportType;
 };
 
-const PreviewTable = ({ users, failedRows, importType }: PreviewTableProps) => (
-  <Card className="glass-card">
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2 text-lg">
-        <Eye className="h-5 w-5 text-primary" />
-        Import Preview
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="space-y-4">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>School Code</TableHead>
-              <TableHead>Admission / Receipt</TableHead>
-              <TableHead>First Name</TableHead>
-              <TableHead>Last Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Class</TableHead>
-              <TableHead>Section</TableHead>
-              <TableHead>Preparing For</TableHead>
-              <TableHead>Validation</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.slice(0, 25).map((user, index) => (
-              <TableRow key={`${user.username || user.receipt_no || index}`}>
-                <TableCell>{user.school_code || user.school_name || "-"}</TableCell>
-                <TableCell>{inferAdmissionNumber(user)}</TableCell>
-                <TableCell>{user.first_name || "-"}</TableCell>
-                <TableCell>{user.last_name || "-"}</TableCell>
-                <TableCell>{user.email || "-"}</TableCell>
-                <TableCell>{user.phone || "-"}</TableCell>
-                <TableCell>{user.class || "-"}</TableCell>
-                <TableCell>{user.section || "-"}</TableCell>
-                <TableCell>{user.preparing_for || "-"}</TableCell>
-                <TableCell className="text-green-600">Valid</TableCell>
-              </TableRow>
-            ))}
-            {users.length === 0 && (
+const preferredColumns = [
+  "rowNumber",
+  "school_code",
+  "admission_number",
+  "receipt_no",
+  "username",
+  "first_name",
+  "last_name",
+  "email",
+  "phone",
+  "dob",
+  "gender",
+  "school_name",
+  "school_type",
+  "school_address",
+  "branch",
+  "class",
+  "section",
+  "preparing_for",
+  "executive_name",
+  "executive_phone",
+];
+
+const formatHeader = (key: string) =>
+  key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatDateValue = (value: unknown) => {
+  const date = value instanceof Date ? value : new Date(String(value));
+
+  if (Number.isNaN(date.getTime())) return String(value || "-");
+
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+    .format(date)
+    .replace(/\//g, "-");
+};
+
+const formatGenderValue = (value: unknown) => {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "1" || normalized === "male") return "Male";
+  if (normalized === "2" || normalized === "female") return "Female";
+  if (normalized === "3" || normalized === "other" || normalized === "others") {
+    return "Other";
+  }
+
+  return value ? String(value) : "-";
+};
+
+const formatValue = (key: string, value: unknown) => {
+  if (value === undefined || value === null || value === "") return "-";
+  if (key === "dob") return formatDateValue(value);
+  if (key === "gender") return formatGenderValue(value);
+  if (value instanceof Date) return value.toLocaleDateString();
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+};
+
+const getPreviewColumns = (users: ImportedUser[]) => {
+  const keys = Array.from(
+    new Set(users.flatMap((user) => Object.keys(user).filter((key) => key !== "password")))
+  );
+
+  return [
+    ...preferredColumns.filter((key) => keys.includes(key)),
+    ...keys.filter((key) => !preferredColumns.includes(key)),
+    "validation",
+  ];
+};
+
+const PreviewTable = ({ users, failedRows, importType }: PreviewTableProps) => {
+  const columns = getPreviewColumns(users);
+
+  return (
+    <Card className="glass-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Eye className="h-5 w-5 text-primary" />
+          Import Preview
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-                  Preview users will appear here after validation.
-                </TableCell>
+                {columns.map((column) => (
+                  <TableHead key={column}>{formatHeader(column)}</TableHead>
+                ))}
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {users.slice(0, 25).map((user, index) => (
+                <TableRow key={`${user.username || user.receipt_no || index}`}>
+                  {columns.map((column) => (
+                    <TableCell key={column} className="whitespace-nowrap">
+                      {column === "validation" ? (
+                        <span className="text-green-600">Valid</span>
+                      ) : (
+                        formatValue(column, (user as Record<string, unknown>)[column])
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+              {users.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={Math.max(columns.length, 1)} className="h-24 text-center text-muted-foreground">
+                    Preview users will appear here after validation.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
       {failedRows.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
@@ -89,6 +160,7 @@ const PreviewTable = ({ users, failedRows, importType }: PreviewTableProps) => (
       </p>
     </CardContent>
   </Card>
-);
+  );
+};
 
 export default PreviewTable;

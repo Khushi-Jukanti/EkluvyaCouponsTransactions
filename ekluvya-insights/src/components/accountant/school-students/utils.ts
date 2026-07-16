@@ -54,6 +54,35 @@ export const inferAdmissionNumber = (user: ImportedUser) => {
   return user.receipt_no || "-";
 };
 
+export const formatExportDate = (value: string | Date | null | undefined) => {
+  if (!value) return "";
+
+  const date = value instanceof Date ? value : new Date(String(value));
+
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+    .format(date)
+    .replace(/\//g, "-");
+};
+
+export const formatExportGender = (value: string | null | undefined) => {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "1" || normalized === "male") return "Male";
+  if (normalized === "2" || normalized === "female") return "Female";
+  if (normalized === "3" || normalized === "other" || normalized === "others") {
+    return "Other";
+  }
+
+  return value || "";
+};
+
 export const toSuccessExportRows = (users: ImportedUser[], importType: ImportType) =>
   users.map((user) => ({
     username: user.username || "",
@@ -61,14 +90,24 @@ export const toSuccessExportRows = (users: ImportedUser[], importType: ImportTyp
     first_name: user.first_name || "",
     last_name: user.last_name || "",
     school_code: user.school_code || "",
+    school_type: user.school_type || "",
     school_name: user.school_name || "",
+    school_address: user.school_address || "",
+    branch: user.branch || "",
     admission_number: inferAdmissionNumber(user),
     receipt_no: user.receipt_no || "",
+    executive_name: user.executive_name || "",
+    executive_phone: user.executive_phone || "",
     user_id: user.user_id || "",
     phone: user.phone || "",
     email: user.email || "",
+    dob: formatExportDate(user.dob),
+    gender: formatExportGender(user.gender),
     class: user.class || "",
     section: user.section || "",
+    preparing_for: user.preparing_for || "",
+    payment_status: user.payment_status || "",
+    receipt_status: user.receipt_status || "",
     import_status: user.import_status || user.action || "",
     subscription_status: user.subscription_status || "",
   }));
@@ -98,14 +137,24 @@ export const toCompleteReportRows = (
     first_name: "",
     last_name: "",
     school_code: "",
+    school_type: "",
     school_name: "",
+    school_address: "",
+    branch: "",
     admission_number: "",
     receipt_no: row.receipt_no,
+    executive_name: "",
+    executive_phone: "",
     user_id: "",
     phone: "",
     email: "",
+    dob: "",
+    gender: "",
     class: "",
     section: "",
+    preparing_for: "",
+    payment_status: "",
+    receipt_status: "",
     import_status: "Failed",
     subscription_status: "",
     error: row.error,

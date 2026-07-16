@@ -207,6 +207,7 @@ function buildBaseUser(row) {
     tempPassword,
     user: {
       username,
+      admission_number: admissionNumber,
       user_type: "b2b",
       first_name: firstName,
       last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname"])),
@@ -629,14 +630,21 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
       preview: newEntries.slice(0, 20).map((entry) => ({
         rowNumber: entry.rowNumber,
         username: entry.user.username,
+        admission_number: entry.user.admission_number,
         first_name: entry.user.first_name,
         last_name: entry.user.last_name,
         email: entry.user.email,
         phone: entry.user.phone,
         school_code: entry.user.school_code,
         school_type: entry.user.school_type,
+        school_name: entry.user.school_name,
+        school_address: entry.user.school_address,
+        branch: entry.user.branch,
         class: entry.user.class,
         section: entry.user.section,
+        preparing_for: entry.user.preparing_for,
+        dob: entry.user.dob,
+        gender: entry.user.gender,
       })),
       failedRows,
     };
@@ -678,25 +686,28 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
       email: user.email,
       phone: user.phone,
       username: user.username,
+      admission_number:
+        user.admission_number ||
+        (user.school_code && user.username?.startsWith(`${user.school_code}_`)
+          ? user.username.slice(user.school_code.length + 1)
+          : null),
       password: plainPassword,
       school_code: user.school_code,
       school_type: user.school_type,
+      school_name: user.school_name,
+      school_address: user.school_address,
+      branch: user.branch,
       class: user.class,
       section: user.section,
+      preparing_for: user.preparing_for,
+      dob: user.dob,
+      gender: user.gender,
       user_id: user._id.toString(),
       import_status: "Inserted",
     };
   });
 
-  const successfulUsers = mapping.map((user) => ({
-    first_name: user.first_name,
-    username: user.username,
-    user_id: user.user_id,
-    password: user.password,
-    school_code: user.school_code,
-    school_type: user.school_type,
-    import_status: user.import_status,
-  }));
+  const successfulUsers = mapping.map((user) => ({ ...user }));
 
   const subscriptionAssignment = assignSubscriptions
     ? await assignSubscriptionsToUsers(
@@ -847,6 +858,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         phone: entry.receiptFields.phone,
         school_name: entry.receiptFields.school_name,
         school_type: entry.receiptFields.school_type,
+        school_code: entry.receiptFields.school_code,
         school_address: entry.receiptFields.school_address,
         branch: entry.receiptFields.branch,
         executive_phone: entry.receiptFields.executive_phone,
@@ -855,6 +867,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         gender: entry.receiptFields.gender,
         class: entry.receiptFields.class,
         section: entry.receiptFields.section,
+        preparing_for: entry.receiptFields.preparing_for,
       })),
       failedRows,
     };
@@ -877,6 +890,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         user_id: result.user._id.toString(),
         school_name: result.user.school_name,
         school_type: result.user.school_type,
+        school_code: result.user.school_code,
         school_address: result.user.school_address,
         branch: result.user.branch,
         executive_name: result.user.executive_name,
@@ -885,6 +899,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         gender: result.user.gender,
         class: result.user.class,
         section: result.user.section,
+        preparing_for: result.user.preparing_for,
         import_status: result.action,
       });
     } catch (err) {
