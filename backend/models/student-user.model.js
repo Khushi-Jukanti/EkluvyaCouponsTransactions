@@ -325,6 +325,22 @@ const Users = new Schema(
       type: Date,
       default: null,
     },
+    lastLogin: {
+      type: Date,
+      default: null,
+    },
+    loginCount: {
+      type: Number,
+      default: 0,
+    },
+    walkthrough_shown: {
+      type: Boolean,
+      default: false,
+    },
+    walkthrough_shown_at: {
+      type: Date,
+      default: null,
+    },
     otpCreatedAt: {
       type: Date,
       default: null,

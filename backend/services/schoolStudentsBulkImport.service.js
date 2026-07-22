@@ -144,6 +144,16 @@ function buildAuthMethods(authMethods) {
   return methods.includes("otp") ? methods : [...methods, "otp"];
 }
 
+function buildNewUserWalkthroughState() {
+  return {
+    last_login: null,
+    lastLogin: null,
+    loginCount: 0,
+    walkthrough_shown: false,
+    walkthrough_shown_at: null,
+  };
+}
+
 function buildOfflineReceiptUsername(receiptNo) {
   const safeReceiptNo = receiptNo
     .toString()
@@ -263,6 +273,7 @@ function buildBaseUser(row) {
       auth_methods: ["password"],
       login_type: "password",
       temp_password: tempPassword,
+      ...buildNewUserWalkthroughState(),
       created_at: new Date(),
       updated_at: new Date(),
     },
@@ -493,6 +504,7 @@ async function createOrUpdateOfflineReceiptUser(receiptFields) {
     temp_password: null,
     auth_methods: ["otp"],
     login_type: "offline_receipt",
+    ...buildNewUserWalkthroughState(),
     created_at: new Date(),
     updated_at: new Date(),
   });
