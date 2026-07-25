@@ -4,6 +4,7 @@ const verifyToken = require("../middleware/auth");
 const requireRole = require("../middleware/role");
 const {
   assignSubscriptionToUsers,
+  changePasswordForStudent,
   getImportHistory,
   getImportHistoryDetails,
   importOfflineReceiptUsers,
@@ -95,6 +96,13 @@ router.post(
   verifyToken,
   requireRole("accountant"),
   assignSubscriptionToUsers
+);
+
+router.post(
+  "/change-password",
+  verifyToken,
+  requireRole("accountant"),
+  changePasswordForStudent
 );
 
 module.exports = router;

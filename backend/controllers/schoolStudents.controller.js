@@ -6,6 +6,7 @@ const {
   assignSubscriptionsToUsers,
   fetchSubscriptionPlans,
 } = require("../services/subscriptionAssignment.service");
+const { changeStudentPassword } = require("../services/studentPassword.service");
 const {
   getImportLog,
   listImportLogs,
@@ -159,6 +160,36 @@ const assignSubscriptionToUsers = async (req, res) => {
   }
 };
 
+const changePasswordForStudent = async (req, res) => {
+  try {
+    const adminToken = String(req.body.adminToken || req.body.token || "").trim();
+    const username = String(req.body.username || req.body.studentId || "").trim();
+    const password = String(req.body.password || "");
+    const passwordConfirmation = String(
+      req.body.password_confirmation || req.body.passwordConfirmation || ""
+    );
+
+    const result = await changeStudentPassword({
+      adminToken,
+      username,
+      password,
+      passwordConfirmation,
+    });
+
+    return res.status(result.success ? 200 : result.statusCode || 400).json(result);
+  } catch (error) {
+    console.error("Change student password error:", error.response?.data || error.message);
+    return res.status(error.response?.status || 500).json({
+      success: false,
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to change student password",
+      error: error.response?.data || null,
+    });
+  }
+};
+
 const getImportHistory = async (req, res) => {
   try {
     const result = await listImportLogs({
@@ -209,6 +240,7 @@ module.exports = {
   importOfflineReceiptUsers,
   getSubscriptionPlans,
   assignSubscriptionToUsers,
+  changePasswordForStudent,
   getImportHistory,
   getImportHistoryDetails,
 };

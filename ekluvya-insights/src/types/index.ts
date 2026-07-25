@@ -49,6 +49,9 @@ export type PaymentStatus = 'pending' | 'paid';
 export interface Transaction {
   // Existing fields
   transactionId?: string;
+  paymentId?: string;
+  userId?: string;
+  user_id?: string;
   user_type?: "b2b" | "b2c";
   userName: string;
   first_name?: string;

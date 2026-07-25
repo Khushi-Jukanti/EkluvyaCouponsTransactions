@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 
 const TOPPER_PAGE_SIZE = 10;
 const LOCATION_PAGE_SIZE = 15;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 type SortDirection = "desc" | "asc";
 
 // Helper function to create November 10th date for previous year
@@ -34,6 +34,11 @@ const getNovember10thDate = (): Date => {
 const getTransactionKey = (t: any): string => {
   if (!t) return "";
 
+  const userType = String(t.user_type || "").trim().toLowerCase();
+  const userId = String(t.userId || t.user_id || "").trim();
+  const username = String(t.username || t.userName || "").trim().toLowerCase();
+  const transactionId = String(t.transactionId || "").trim();
+  const paymentId = String(t.paymentId || "").trim();
   const phone = String(t.phone || t.userPhone || "").trim();
   const email = String(t.email || t.userEmail || "").trim().toLowerCase();
   const agent = String(t.agentName || "").trim().toLowerCase();
@@ -41,6 +46,17 @@ const getTransactionKey = (t: any): string => {
   const amount = String(t.amount ?? "").trim();
   const school = String(t.school_code || "").trim().toLowerCase();
   const status = String(t.paymentStatus ?? t.status ?? t.paymentStatusText ?? "").trim().toLowerCase();
+
+  if (userType === "b2b") {
+    const userKey = userId || username || phone || email;
+    const paymentKey = transactionId || paymentId;
+
+    if (!userKey && !paymentKey && !school && !coupon && !amount) {
+      return "";
+    }
+
+    return `b2b:${userKey}|${paymentKey}|${school}|${coupon}|${amount}|${status}`;
+  }
 
   if (!phone && !email && !school && !coupon && !amount) {
     return "";

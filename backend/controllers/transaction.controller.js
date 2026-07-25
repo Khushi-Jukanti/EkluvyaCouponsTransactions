@@ -14,6 +14,11 @@ const escapeRegex = (value) =>
 const toText = (value) => String(value ?? "").trim();
 
 const getDisplaySignature = (transaction) => {
+  const userType = toText(transaction.user_type).toLowerCase();
+  const userId = toText(transaction.userId || transaction.user_id);
+  const username = toText(transaction.username || transaction.userName).toLowerCase();
+  const transactionId = toText(transaction.transactionId);
+  const paymentId = toText(transaction.paymentId);
   const phone = toText(transaction.phone || transaction.userPhone);
   const email = toText(transaction.email || transaction.userEmail).toLowerCase();
   const agent = toText(transaction.agentName).toLowerCase();
@@ -23,6 +28,12 @@ const getDisplaySignature = (transaction) => {
   ).toUpperCase();
   const amount = toText(transaction.amount);
   const status = toText(transaction.paymentStatus ?? transaction.status ?? transaction.paymentStatusText).toLowerCase();
+
+  if (userType === "b2b") {
+    const userKey = userId || username || phone || email;
+    const paymentKey = transactionId || paymentId;
+    return [userType, userKey, paymentKey, school, coupon, amount, status].join("|");
+  }
 
   return [phone, email, agent, school, coupon, amount, status].join("|");
 };
@@ -224,6 +235,7 @@ const getAllTransactions = async (req, res) => {
           $ifNull: ["$gud_transaction_id", "$payment.gudsho_receipt"],
         },
         paymentId: { $toString: { $ifNull: ["$payment_id", ""] } },
+        userId: { $toString: { $ifNull: ["$user_id", ""] } },
         userName: {
           $trim: {
             input: {
