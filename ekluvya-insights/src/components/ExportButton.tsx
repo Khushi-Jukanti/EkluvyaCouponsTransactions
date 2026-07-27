@@ -10,6 +10,23 @@ interface ExportAllButtonProps {
   filteredTransactions: any[];
 }
 
+const getTransactionStatus = (transaction: any): "success" | "failed" => {
+  const rawStatus =
+    transaction?.paymentStatus ??
+    transaction?.status ??
+    transaction?.payment_status ??
+    transaction?.paymentStatusText ??
+    transaction?.statusText ??
+    "";
+  const statusText = String(rawStatus).trim().toLowerCase();
+
+  if (Number(rawStatus) === 3 || ["failed", "failure", "fail"].includes(statusText)) {
+    return "failed";
+  }
+
+  return "success";
+};
+
 const ExportAllButton = ({
   dateRange,
   searchQuery = "",
@@ -42,7 +59,7 @@ const ExportAllButton = ({
     ];
 
     const rows = filteredTransactions.map((t: any, index: number) => {
-      const isFailed = t.paymentStatus != null && Number(t.paymentStatus) === 3;
+      const isFailed = getTransactionStatus(t) === "failed";
       const statusText = isFailed ? "Failed" : "Success";
 
       // Determine payment status - check various possible properties

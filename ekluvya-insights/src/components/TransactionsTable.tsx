@@ -106,6 +106,23 @@ const parseAnyDate = (raw?: string | number | Date): Date => {
   return isNaN(d.getTime()) ? new Date(0) : d;
 };
 
+const getTransactionStatus = (transaction: any): "success" | "failed" => {
+  const rawStatus =
+    transaction?.paymentStatus ??
+    transaction?.status ??
+    transaction?.payment_status ??
+    transaction?.paymentStatusText ??
+    transaction?.statusText ??
+    "";
+  const statusText = String(rawStatus).trim().toLowerCase();
+
+  if (Number(rawStatus) === 3 || ["failed", "failure", "fail"].includes(statusText)) {
+    return "failed";
+  }
+
+  return "success";
+};
+
 const TransactionsTable = ({
   transactions,
   isLoading,
@@ -699,7 +716,7 @@ const TransactionsTable = ({
               </TableRow>
             ) : (
               transactions.map((transaction, index) => {
-                const isFailed = transaction.paymentStatus === 3;
+                const isFailed = getTransactionStatus(transaction) === "failed";
                 const transactionId = transaction._id || transaction.transactionId || `temp-${index}`;
                 const isSelected = selectedTransactions.has(transactionId);
                 const isEditing = editingTransactionId === transactionId;

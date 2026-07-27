@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit, Building } from "lucide-react";
+import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit, Building, IndianRupee } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
@@ -82,6 +82,44 @@ const getTransactionSortTime = (transaction: any): number => {
   return isValid(fallback) ? fallback.getTime() : 0;
 };
 
+const getTransactionStatus = (transaction: any): "success" | "failed" => {
+  const rawStatus =
+    transaction?.paymentStatus ??
+    transaction?.status ??
+    transaction?.payment_status ??
+    transaction?.paymentStatusText ??
+    transaction?.statusText ??
+    "";
+  const statusText = String(rawStatus).trim().toLowerCase();
+
+  if (Number(rawStatus) === 3 || ["failed", "failure", "fail"].includes(statusText)) {
+    return "failed";
+  }
+
+  return "success";
+};
+
+const normalizeAmount = (value: any): number | null => {
+  const normalized = String(value ?? "")
+    .replace(/[₹,\s]/g, "")
+    .trim();
+
+  if (!normalized) return null;
+
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : null;
+};
+
+const isWithinDateRange = (transaction: any, range: DateRange): boolean => {
+  const transactionTime = getTransactionSortTime(transaction);
+  if (!transactionTime) return false;
+
+  const start = new Date(`${range.start}T00:00:00`);
+  const end = new Date(`${range.end}T23:59:59.999`);
+
+  return transactionTime >= start.getTime() && transactionTime <= end.getTime();
+};
+
 const dedupeTransactionsByIdentity = (transactions: any[]): any[] => {
   const map = new Map<string, any>();
 
@@ -119,6 +157,7 @@ const Index: React.FC = () => {
 
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [couponFilter, setCouponFilter] = useState<"all" | "with" | "without">("all");
+  const [amountFilter, setAmountFilter] = useState("");
   const [transactionUserType, setTransactionUserType] = useState<"b2c" | "b2b">("b2c");
   const [schoolCode, setSchoolCode] = useState("");
   const [debouncedSchoolCode, setDebouncedSchoolCode] = useState("");
@@ -529,7 +568,7 @@ const Index: React.FC = () => {
     setPage(1);
     setSelectedTransactions(new Set());
     setSelectAll(false);
-  }, [statusFilter, searchQuery, dateRange, couponFilter, transactionUserType, debouncedSchoolCode]);
+  }, [statusFilter, searchQuery, dateRange, couponFilter, amountFilter, transactionUserType, debouncedSchoolCode]);
 
   const { data, isLoading, error, refetch, isFetching } = useTransactions({
     page,
@@ -551,9 +590,12 @@ const Index: React.FC = () => {
 
   // Client-side search
   const searchedList = useMemo(() => {
-      const searchSource = searchQuery.trim()
-      ? dedupeTransactionsByIdentity(allTransactionsData.length > 0 ? allTransactionsData : data?.data || [])
-      : dedupeTransactionsByIdentity(data?.data || []);
+    const fullSource = allTransactionsData.length > 0 ? allTransactionsData : data?.data || [];
+    const shouldApplyDateFilter = !(transactionUserType === "b2b" && Boolean(debouncedSchoolCode));
+    const dateFilteredSource = shouldApplyDateFilter
+      ? fullSource.filter((t: any) => isWithinDateRange(t, dateRange))
+      : fullSource;
+    const searchSource = dedupeTransactionsByIdentity(dateFilteredSource);
 
     if (!searchSource.length || !searchQuery.trim()) return searchSource;
 
@@ -582,10 +624,11 @@ const Index: React.FC = () => {
         userType.includes(q)
       );
     });
-  }, [allTransactionsData, data?.data, searchQuery]);
+  }, [allTransactionsData, data?.data, dateRange, debouncedSchoolCode, searchQuery, transactionUserType]);
 
   // Check if there's a search query to show transactions
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const hasAmountFilter = amountFilter.trim().length > 0;
 
   const baseList = searchedList;
 
@@ -597,10 +640,9 @@ const Index: React.FC = () => {
     let list = dedupeTransactionsByIdentity([...baseList]);
 
     if (statusFilter !== "all") {
-      const targetStatus = statusFilter === "success" ? 2 : 3;
       const beforeFilter = list.length;
-      list = list.filter((t: any) => t.paymentStatus === targetStatus);
-      console.log(`Status filter "${statusFilter}" (${targetStatus}): ${beforeFilter} → ${list.length}`);
+      list = list.filter((t: any) => getTransactionStatus(t) === statusFilter);
+      console.log(`Status filter "${statusFilter}": ${beforeFilter} → ${list.length}`);
     }
 
     if (couponFilter !== "all") {
@@ -615,9 +657,16 @@ const Index: React.FC = () => {
       console.log(`Coupon filter "${couponFilter}": ${beforeFilter} → ${list.length}`);
     }
 
+    const targetAmount = normalizeAmount(amountFilter);
+    if (targetAmount !== null) {
+      const beforeFilter = list.length;
+      list = list.filter((t: any) => normalizeAmount(t.amount ?? t.transaction_amount ?? t.amount_paid) === targetAmount);
+      console.log(`Amount filter "${amountFilter}": ${beforeFilter} → ${list.length}`);
+    }
+
     list.sort((a: any, b: any) => {
-      const da = new Date(a.date_ist ?? a.createdAt ?? "").getTime();
-      const db = new Date(b.date_ist ?? b.createdAt ?? "").getTime();
+      const da = getTransactionSortTime(a);
+      const db = getTransactionSortTime(b);
       return sortDirection === "desc" ? db - da : da - db;
     });
 
@@ -636,7 +685,7 @@ const Index: React.FC = () => {
 
     console.log("List after payment/account merge:", mergedList.length);
     setFilteredTransactions(mergedList);
-  }, [baseList, statusFilter, couponFilter, sortDirection, transactionsPaymentData, agentsMap]);
+  }, [baseList, statusFilter, couponFilter, amountFilter, sortDirection, transactionsPaymentData, agentsMap]);
 
   const uniqueFilteredTransactions = useMemo(
     () => dedupeTransactionsByIdentity(filteredTransactions),
@@ -647,9 +696,7 @@ const Index: React.FC = () => {
   // Keep the displayed list on that page and only assign serial numbers.
   useEffect(() => {
     const startIndex = (page - 1) * PAGE_SIZE;
-    const pageTransactions = hasSearchQuery
-      ? uniqueFilteredTransactions.slice(startIndex, startIndex + PAGE_SIZE)
-      : uniqueFilteredTransactions;
+    const pageTransactions = uniqueFilteredTransactions.slice(startIndex, startIndex + PAGE_SIZE);
 
     const newDisplayedTransactions = pageTransactions.map((transaction, index) => ({
       ...transaction,
@@ -657,13 +704,11 @@ const Index: React.FC = () => {
     }));
 
     setDisplayedTransactions(newDisplayedTransactions);
-  }, [uniqueFilteredTransactions, page, hasSearchQuery]);
+  }, [uniqueFilteredTransactions, page]);
 
   // Pagination
-  const totalCount = hasSearchQuery ? uniqueFilteredTransactions.length : (data?.total ?? uniqueFilteredTransactions.length);
-  const totalPages = hasSearchQuery
-    ? Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-    : (data?.pages ?? Math.max(1, Math.ceil(totalCount / PAGE_SIZE)));
+  const totalCount = uniqueFilteredTransactions.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = totalCount === 0 ? 0 : rangeStart + displayedTransactions.length - 1;
 
@@ -1655,6 +1700,22 @@ const Index: React.FC = () => {
                 </div>
               </div>
 
+              <div className="w-full lg:w-56">
+                <div className="relative">
+                  <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    inputMode="decimal"
+                    placeholder="Exact amount"
+                    value={amountFilter}
+                    onChange={(e) => {
+                      setAmountFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="pl-11 h-12 text-base font-medium"
+                  />
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2 w-full lg:w-auto">
                 <DateRangePicker
                   dateRange={dateRange}
@@ -1666,7 +1727,7 @@ const Index: React.FC = () => {
           </div>
 
           {/* Show transactions section when there's a search query OR date filter is changed */}
-          {(transactionUserType === "b2b" || hasSearchQuery || !isDefaultDateRange) && (
+          {(transactionUserType === "b2b" || hasSearchQuery || hasAmountFilter || !isDefaultDateRange) && (
             <>
               {/* Showing X-Y of Z - Only show when we have transactions */}
               {totalCount > 0 && (
