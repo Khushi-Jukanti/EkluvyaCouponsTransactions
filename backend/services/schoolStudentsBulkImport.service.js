@@ -209,7 +209,7 @@ function buildBaseUser(row) {
   if (!admissionNumber) throw new Error("admission_number missing");
   if (!firstName) throw new Error("first_name missing");
 
-  const username = `${schoolCode}_${admissionNumber}`;
+  const username = `${schoolCode}-${admissionNumber}`;
   const tempPassword = generateRandomPassword();
 
   return {
