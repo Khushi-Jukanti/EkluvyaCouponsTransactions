@@ -12,6 +12,78 @@ const {
   listImportLogs,
   updateImportLogSubscription,
 } = require("../services/schoolStudentsImportHistory.service");
+const StudentUser = require("../models/student-user.model");
+
+const cleanText = (value) => String(value || "").trim();
+
+const getSchools = async (req, res) => {
+  try {
+    const schools = await StudentUser.aggregate([
+      {
+        $match: {
+          user_type: "b2b",
+          school_code: { $exists: true, $nin: [null, ""] },
+        },
+      },
+      {
+        $addFields: {
+          normalized_school_code: {
+            $toUpper: { $trim: { input: { $toString: "$school_code" } } },
+          },
+          normalized_school_name: { $trim: { input: { $ifNull: ["$school_name", ""] } } },
+          normalized_school_address: { $trim: { input: { $ifNull: ["$school_address", ""] } } },
+        },
+      },
+      {
+        $match: {
+          normalized_school_code: { $ne: "" },
+        },
+      },
+      {
+        $sort: {
+          updated_at: -1,
+          created_at: -1,
+        },
+      },
+      {
+        $group: {
+          _id: "$normalized_school_code",
+          school_code: { $first: "$normalized_school_code" },
+          school_name: { $first: "$normalized_school_name" },
+          school_address: { $first: "$normalized_school_address" },
+        },
+      },
+      {
+        $sort: {
+          school_code: 1,
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          school_code: 1,
+          school_name: 1,
+          school_address: 1,
+        },
+      },
+    ]);
+
+    return res.json({
+      success: true,
+      data: schools.map((school) => ({
+        school_code: cleanText(school.school_code).toUpperCase(),
+        school_name: cleanText(school.school_name),
+        school_address: cleanText(school.school_address),
+      })),
+    });
+  } catch (error) {
+    console.error("Schools list error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch schools",
+    });
+  }
+};
 
 const importSchoolStudents = async (req, res) => {
   try {
@@ -236,6 +308,7 @@ const getImportHistoryDetails = async (req, res) => {
 };
 
 module.exports = {
+  getSchools,
   importSchoolStudents,
   importOfflineReceiptUsers,
   getSubscriptionPlans,

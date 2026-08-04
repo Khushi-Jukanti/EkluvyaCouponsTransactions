@@ -3,6 +3,13 @@ import { createPortal } from "react-dom";
 import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit, Building, IndianRupee } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Navbar from "@/components/Navbar";
 import TransactionsTable from "@/components/TransactionsTable";
 import DateRangePicker from "@/components/DateRangePicker";
@@ -22,7 +29,14 @@ import { Badge } from "@/components/ui/badge";
 const TOPPER_PAGE_SIZE = 10;
 const LOCATION_PAGE_SIZE = 15;
 const PAGE_SIZE = 20;
+const SCHOOL_FILTER_ALL = "__all_schools__";
 type SortDirection = "desc" | "asc";
+
+type SchoolOption = {
+  school_code: string;
+  school_name: string;
+  school_address: string;
+};
 
 // Helper function to create November 10th date for previous year
 const getNovember10thDate = (): Date => {
@@ -146,6 +160,17 @@ const dedupeTransactionsByIdentity = (transactions: any[]): any[] => {
   return Array.from(map.values());
 };
 
+const getSchoolOptionLabel = (school: SchoolOption): string => {
+  return [
+    school.school_code,
+    school.school_name,
+    school.school_address,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" - ");
+};
+
 const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -161,6 +186,8 @@ const Index: React.FC = () => {
   const [transactionUserType, setTransactionUserType] = useState<"b2c" | "b2b">("b2c");
   const [schoolCode, setSchoolCode] = useState("");
   const [debouncedSchoolCode, setDebouncedSchoolCode] = useState("");
+  const [schools, setSchools] = useState<SchoolOption[]>([]);
+  const [schoolsLoading, setSchoolsLoading] = useState(false);
 
   const [couponSearchCode, setCouponSearchCode] = useState("");
   const [couponSearchTrigger, setCouponSearchTrigger] = useState("");
@@ -210,6 +237,48 @@ const Index: React.FC = () => {
 
     return () => window.clearTimeout(timeout);
   }, [schoolCode]);
+
+  useEffect(() => {
+    if (transactionUserType !== "b2b" || schools.length > 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const fetchSchools = async () => {
+      setSchoolsLoading(true);
+
+      try {
+        const token = localStorage.getItem("token");
+        const response = await fetch(`${BASE_URL}/school-students/schools`, {
+          signal: controller.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          cache: "no-cache",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch schools");
+        }
+
+        const result = await response.json();
+        const schoolOptions = Array.isArray(result.data) ? result.data : [];
+        setSchools(schoolOptions);
+      } catch (error: any) {
+        if (error?.name !== "AbortError") {
+          console.error("Error fetching schools:", error);
+          toast.error("Failed to load schools");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSchoolsLoading(false);
+        }
+      }
+    };
+
+    fetchSchools();
+
+    return () => controller.abort();
+  }, [schools.length, transactionUserType]);
 
   const [locationPage, setLocationPage] = useState(1);
   useEffect(() => {
@@ -1579,17 +1648,37 @@ const Index: React.FC = () => {
                 </div>
 
                 {transactionUserType === "b2b" && (
-                  <div className="flex w-full max-w-sm items-center gap-2">
+                  <div className="flex w-full max-w-lg items-center gap-2">
                     <Building className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Filter by school code"
-                      value={schoolCode}
-                      onChange={(e) => {
-                        setSchoolCode(e.target.value.toUpperCase());
+                    <Select
+                      value={schoolCode || SCHOOL_FILTER_ALL}
+                      onValueChange={(value) => {
+                        setSchoolCode(value === SCHOOL_FILTER_ALL ? "" : value);
                         setPage(1);
                       }}
-                      className="h-11 uppercase"
-                    />
+                      disabled={schoolsLoading}
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder={schoolsLoading ? "Loading schools..." : "Filter by school"} />
+                      </SelectTrigger>
+                      <SelectContent className="max-w-[min(520px,calc(100vw-2rem))]">
+                        <SelectItem value={SCHOOL_FILTER_ALL}>All schools</SelectItem>
+                        {schools.map((school) => (
+                          <SelectItem
+                            key={school.school_code}
+                            value={school.school_code}
+                            className="border-b border-border/40 py-3 last:border-b-0"
+                          >
+                            {getSchoolOptionLabel(school)}
+                          </SelectItem>
+                        ))}
+                        {!schoolsLoading && schools.length === 0 && (
+                          <SelectItem value="__no_schools__" disabled>
+                            No schools found
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
               </div>

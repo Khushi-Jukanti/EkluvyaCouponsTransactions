@@ -5,6 +5,7 @@ const requireRole = require("../middleware/role");
 const {
   assignSubscriptionToUsers,
   changePasswordForStudent,
+  getSchools,
   getImportHistory,
   getImportHistoryDetails,
   importOfflineReceiptUsers,
@@ -51,6 +52,8 @@ const normalizeUploadedFile = (req, res, next) => {
 
   next();
 };
+
+router.get("/schools", verifyToken, getSchools);
 
 router.get(
   "/import-history",
