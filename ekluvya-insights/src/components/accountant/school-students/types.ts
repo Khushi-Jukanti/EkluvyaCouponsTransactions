@@ -1,4 +1,4 @@
-export type ImportType = "school-students" | "offline-receipts";
+export type ImportType = "school-students" | "offline-receipts" | "sr-receipts";
 
 export type ResultFilter = "all" | "success" | "failed" | "skipped";
 
@@ -11,6 +11,7 @@ export type ImportedUser = {
   phone?: string | null;
   username?: string | null;
   user_id?: string | null;
+  user_type?: "b2b" | "b2c" | string | null;
   password?: string | null;
   school_code?: string | null;
   school_name?: string | null;

@@ -20,7 +20,7 @@ import type { ImportResult, ImportType } from "@/components/accountant/school-st
 
 type ImportLogListItem = {
   import_id: string;
-  import_type: "school_students" | "offline_receipt_users";
+  import_type: "school_students" | "offline_receipt_users" | "sr_receipt_users";
   source_file_name?: string | null;
   summary?: Record<string, any>;
   subscription_assignment?: Record<string, any>;
@@ -37,7 +37,11 @@ type ImportLogDetails = ImportLogListItem & {
 };
 
 const toImportType = (type?: string): ImportType =>
-  type === "offline_receipt_users" ? "offline-receipts" : "school-students";
+  type === "offline_receipt_users"
+    ? "offline-receipts"
+    : type === "sr_receipt_users"
+      ? "sr-receipts"
+      : "school-students";
 
 const toResult = (log: ImportLogDetails): ImportResult => ({
   success: true,

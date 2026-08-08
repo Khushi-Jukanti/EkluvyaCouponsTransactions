@@ -15,15 +15,21 @@ const options = [
     icon: FileSpreadsheet,
   },
   {
+    value: "sr-receipts" as ImportType,
+    title: "Import SR Offline Receipt Users",
+    description: "B2B receipt users who login through username and password.",
+    icon: ReceiptText,
+  },
+  {
     value: "offline-receipts" as ImportType,
-    title: "Import Offline Receipt Users",
+    title: "Import SR1 Offline Receipt Users (Non-SR)",
     description: "B2C receipt users with phone/email OTP login and receipt details.",
     icon: ReceiptText,
   },
 ];
 
 const ImportTypeSelector = ({ value, onChange }: ImportTypeSelectorProps) => (
-  <div className="grid gap-3 md:grid-cols-2">
+  <div className="grid gap-3 md:grid-cols-3">
     {options.map((option) => {
       const Icon = option.icon;
       const selected = value === option.value;

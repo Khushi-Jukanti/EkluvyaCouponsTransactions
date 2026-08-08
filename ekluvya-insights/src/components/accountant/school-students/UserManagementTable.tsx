@@ -80,7 +80,7 @@ const UserManagementTable = ({
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      const userType = user.receipt_no ? "b2c" : "b2b";
+      const userType = user.user_type || (importType === "offline-receipts" ? "b2c" : "b2b");
 
       return (
         (resultFilter === "all" || row.type === resultFilter) &&

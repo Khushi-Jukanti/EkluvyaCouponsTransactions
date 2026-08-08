@@ -9,6 +9,7 @@ const {
   getImportHistory,
   getImportHistoryDetails,
   importOfflineReceiptUsers,
+  importSrReceiptUsers,
   importSchoolStudents,
   getSubscriptionPlans,
 } = require("../controllers/schoolStudents.controller");
@@ -85,6 +86,15 @@ router.post(
   uploadImportFile,
   normalizeUploadedFile,
   importOfflineReceiptUsers
+);
+
+router.post(
+  "/import-sr-receipts",
+  verifyToken,
+  requireRole("accountant"),
+  uploadImportFile,
+  normalizeUploadedFile,
+  importSrReceiptUsers
 );
 
 router.post(

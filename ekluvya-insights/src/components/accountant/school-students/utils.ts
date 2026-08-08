@@ -3,11 +3,13 @@ import type { FailedRow, ImportedUser, ImportResult, ImportType } from "./types"
 export const importEndpoints: Record<ImportType, string> = {
   "school-students": "/school-students/import",
   "offline-receipts": "/school-students/import-offline-receipts",
+  "sr-receipts": "/school-students/import-sr-receipts",
 };
 
 export const importTypeLabels: Record<ImportType, string> = {
   "school-students": "School Students",
   "offline-receipts": "Offline Receipt Users",
+  "sr-receipts": "SR Receipt Based Users",
 };
 
 export const csvValue = (value: string | number | null | undefined) => {
@@ -83,10 +85,13 @@ export const formatExportGender = (value: string | null | undefined) => {
   return value || "";
 };
 
+export const isPasswordImportType = (importType: ImportType) =>
+  importType === "school-students" || importType === "sr-receipts";
+
 export const toSuccessExportRows = (users: ImportedUser[], importType: ImportType) =>
   users.map((user) => ({
     username: user.username || "",
-    password: importType === "school-students" ? user.password || "" : "",
+    password: isPasswordImportType(importType) ? user.password || "" : "",
     first_name: user.first_name || "",
     last_name: user.last_name || "",
     school_code: user.school_code || "",
@@ -97,7 +102,7 @@ export const toSuccessExportRows = (users: ImportedUser[], importType: ImportTyp
     admission_number: inferAdmissionNumber(user),
     receipt_no: user.receipt_no || "",
     executive_name: user.executive_name || "",
-    executive_phone: user.executive_phone || "",
+    executive_phone: user.executive_phone || "NA",
     user_id: user.user_id || "",
     phone: user.phone || "",
     email: user.email || "",

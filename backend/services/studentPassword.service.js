@@ -1,4 +1,5 @@
 const axios = require("axios");
+const StudentUser = require("../models/student-user.model");
 
 function getPasswordChangeMessage(error) {
   if (!error) return "Password change failed";
@@ -77,6 +78,7 @@ async function changeStudentPassword({
         username,
         password,
         password_confirmation: passwordConfirmation,
+        must_change_password: 0,
       },
       {
         headers: {
@@ -100,6 +102,16 @@ async function changeStudentPassword({
         error: payload,
       };
     }
+
+    await StudentUser.updateOne(
+      { username },
+      {
+        $set: {
+          must_change_password: 0,
+          updated_at: new Date(),
+        },
+      }
+    );
 
     return {
       success: true,

@@ -6,6 +6,7 @@ import {
   downloadCsv,
   formatExportDate,
   formatExportGender,
+  isPasswordImportType,
   toCompleteReportRows,
   toFailedExportRows,
   toSuccessExportRows,
@@ -18,7 +19,12 @@ type ExportSectionProps = {
 };
 
 const ExportSection = ({ users, failedRows, importType }: ExportSectionProps) => {
-  const exportPrefix = importType === "school-students" ? "b2b-school-students" : "b2c-receipt-users";
+  const exportPrefix =
+    importType === "school-students"
+      ? "b2b-school-students"
+      : importType === "sr-receipts"
+        ? "b2b-sr-receipt-users"
+        : "b2c-receipt-users";
 
   return (
     <Card className="glass-card">
@@ -79,7 +85,7 @@ const ExportSection = ({ users, failedRows, importType }: ExportSectionProps) =>
               `${exportPrefix}-school-share.csv`,
               users.map((user) => ({
                 username: user.username || "",
-                password: importType === "school-students" ? user.password || "" : "",
+                password: isPasswordImportType(importType) ? user.password || "" : "",
                 first_name: user.first_name || "",
                 last_name: user.last_name || "",
                 school_code: user.school_code || "",
@@ -90,7 +96,7 @@ const ExportSection = ({ users, failedRows, importType }: ExportSectionProps) =>
                 admission_number: user.admission_number || "",
                 receipt_no: user.receipt_no || "",
                 executive_name: user.executive_name || "",
-                executive_phone: user.executive_phone || "",
+                executive_phone: user.executive_phone || "NA",
                 dob: formatExportDate(user.dob),
                 gender: formatExportGender(user.gender),
                 class: user.class || "",

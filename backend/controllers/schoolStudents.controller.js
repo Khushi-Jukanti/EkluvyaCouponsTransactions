@@ -1,5 +1,6 @@
 const {
   importOfflineReceiptUsersFromExcel,
+  importSrReceiptUsersFromExcel,
   importSchoolStudentsFromExcel,
 } = require("../services/schoolStudentsBulkImport.service");
 const {
@@ -151,6 +152,41 @@ const importOfflineReceiptUsers = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to import offline receipt users",
+    });
+  }
+};
+
+const importSrReceiptUsers = async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: "Excel file is required. Use multipart/form-data field name: file",
+      });
+    }
+
+    const dryRun = ["true", "1", "yes"].includes(
+      String(req.body.dryRun || "").toLowerCase()
+    );
+    const assignSubscriptions = ["true", "1", "yes"].includes(
+      String(req.body.assignSubscriptions || "").toLowerCase()
+    );
+
+    const result = await importSrReceiptUsersFromExcel(req.file.buffer, {
+      dryRun,
+      assignSubscriptions,
+      subscriptionAdminToken: req.body.adminToken,
+      subscriptionPlanId: req.body.planId,
+      sourceFileName: req.file.originalname,
+      requestedBy: req.user,
+    });
+
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("SR receipt users import error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to import SR receipt users",
     });
   }
 };
@@ -311,6 +347,7 @@ module.exports = {
   getSchools,
   importSchoolStudents,
   importOfflineReceiptUsers,
+  importSrReceiptUsers,
   getSubscriptionPlans,
   assignSubscriptionToUsers,
   changePasswordForStudent,

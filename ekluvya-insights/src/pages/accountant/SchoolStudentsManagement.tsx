@@ -310,7 +310,7 @@ const SchoolStudentsManagement = () => {
                   School & Students Management
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                  Import B2B school students and B2C offline receipt users, validate
+                  Import B2B school students, B2B SR receipt users, and B2C offline receipt users, validate
                   files before insertion, manage subscriptions, and export import results.
                 </p>
               </div>

@@ -30,7 +30,7 @@ const SchoolStudentImportLogSchema = new Schema(
     },
     import_type: {
       type: String,
-      enum: ["school_students", "offline_receipt_users"],
+      enum: ["school_students", "offline_receipt_users", "sr_receipt_users"],
       required: true,
       index: true,
     },

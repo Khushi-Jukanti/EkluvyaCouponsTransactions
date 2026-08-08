@@ -244,7 +244,102 @@ function buildBaseUser(row) {
       preparing_for: normalizeValue(
         getRowValue(row, ["preparing_for", "Preparing For"])
       ),
-      must_change_password: 1,
+      must_change_password: 0,
+      dob: parseDOB(getRowValue(row, ["dob", "DOB", "date_of_birth", "Date of Birth"])),
+      gender: mapGender(getRowValue(row, ["gender", "Gender"])),
+      profile_picture: "",
+      roles_user: [],
+      studio_user: [],
+      notification_status: 1,
+      notify_videos: 1,
+      notify_newsletter: 1,
+      notify_email: 1,
+      coins: 0,
+      is_coins_credited: 0,
+      device_limit: 0,
+      access_otp_token: null,
+      expiry_at: null,
+      otp_hit_count: 0,
+      otp: 0,
+      is_email_verified: 0,
+      is_phone_verified: 0,
+      is_active: 1,
+      is_archived: 0,
+      is_partner_blocked: 0,
+      is_contact_sync: 0,
+      is_fbsync: 0,
+      push_notification_status: 2,
+      email_notification_status: 2,
+      auth_methods: ["password"],
+      login_type: "password",
+      temp_password: tempPassword,
+      ...buildNewUserWalkthroughState(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    },
+  };
+}
+
+function buildSrReceiptUser(row) {
+  const receiptNo = normalizeValue(
+    getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
+  );
+  const firstName = normalizeValue(
+    getRowValue(row, ["first_name", "First Name", "firstname", "student_name"])
+  );
+  const schoolName = normalizeValue(
+    getRowValue(row, ["school_name", "School Name", "school name", "schoolName"])
+  );
+  const executiveName = normalizeValue(
+    getRowValue(row, ["executive_name", "Executive Name"])
+  );
+  const executivePhone = normalizePhone(
+    getRowValue(row, ["executive_phone", "Executive Phone"])
+  );
+
+  if (!receiptNo) throw new Error("receipt_no missing");
+  if (!schoolName) throw new Error("school_name missing");
+  if (!firstName) throw new Error("first_name missing");
+  if (!executiveName) throw new Error("executive_name missing");
+
+  const username = receiptNo;
+  const tempPassword = generateRandomPassword();
+
+  return {
+    username,
+    tempPassword,
+    user: {
+      username,
+      receipt_no: receiptNo,
+      admission_number: null,
+      user_type: "b2b",
+      first_name: firstName,
+      last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname"])),
+      email: buildEmail(row),
+      phone: buildPhone(row),
+      school_code: normalizeValue(getRowValue(row, ["school_code", "School Code"])),
+      school_name: schoolName,
+      school_type: normalizeSchoolType(
+        getRowValue(row, ["school_type", "School Type", "school type", "schoolType"])
+      ),
+      school_address: normalizeValue(
+        getRowValue(row, [
+          "school_address",
+          "school_Address",
+          "School Address",
+          "school address",
+          "schoolAddress",
+        ])
+      ),
+      branch: normalizeValue(getRowValue(row, ["branch", "Branch"])),
+      class: normalizeValue(getRowValue(row, ["class", "Class", "grade", "Grade"])),
+      section: normalizeValue(getRowValue(row, ["section", "Section"])),
+      preparing_for: normalizeValue(
+        getRowValue(row, ["preparing_for", "Preparing For"])
+      ),
+      executive_name: executiveName,
+      executive_phone: executivePhone,
+      must_change_password: 0,
       dob: parseDOB(getRowValue(row, ["dob", "DOB", "date_of_birth", "Date of Birth"])),
       gender: mapGender(getRowValue(row, ["gender", "Gender"])),
       profile_picture: "",
@@ -326,7 +421,6 @@ function buildOfflineReceiptFields(row) {
 
   if (!receiptNo) throw new Error("receipt_no missing");
   if (!executiveName) throw new Error("executive_name missing");
-  if (!executivePhone) throw new Error("executive_phone missing");
   if (!schoolName) throw new Error("school_name missing");
   if (!firstName) throw new Error("first_name missing");
   if (!email && !phone) throw new Error("email or phone missing");
@@ -642,6 +736,7 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
       preview: newEntries.slice(0, 20).map((entry) => ({
         rowNumber: entry.rowNumber,
         username: entry.user.username,
+        user_type: entry.user.user_type,
         admission_number: entry.user.admission_number,
         first_name: entry.user.first_name,
         last_name: entry.user.last_name,
@@ -698,6 +793,7 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
       email: user.email,
       phone: user.phone,
       username: user.username,
+      user_type: user.user_type,
       admission_number:
         user.admission_number ||
         (user.school_code && user.username?.startsWith(`${user.school_code}_`)
@@ -769,6 +865,296 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
   await saveImportLogToDatabase({
     importId,
     importType: "school_students",
+    sourceFileName: options.sourceFileName || null,
+    dryRun: false,
+    requestedBy: options.requestedBy || null,
+    summary,
+    sourceRows: rows,
+    successfulUsers: mappingWithSubscriptionStatus,
+    failedRows,
+    subscriptionAssignment,
+    logFileName: logInfo.logFileName,
+    logFilePath: logInfo.logPath,
+  });
+
+  return {
+    success: true,
+    dryRun: false,
+    totalRows: rows.length,
+    validRows: validEntries.length,
+    inserted: insertedUsers.length,
+    failed: failedRows.length,
+    mapping: mappingWithSubscriptionStatus,
+    successfulUsers: successfulUsersWithSubscriptionStatus,
+    failedRows,
+    summary,
+    subscriptionAssignment,
+    importLog: {
+      importId,
+      fileName: logInfo.logFileName,
+    },
+  };
+}
+
+async function importSrReceiptUsersFromExcel(buffer, options = {}) {
+  const dryRun = options.dryRun === true;
+  const assignSubscriptions = options.assignSubscriptions === true;
+  const importId = createImportId().replace("school-students", "sr-receipts");
+  const rows = readWorkbookRows(buffer);
+  const failedRows = [];
+  const validEntries = [];
+  const seenUsernames = new Set();
+  const seenReceipts = new Set();
+  const seenEmails = new Set();
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+
+    try {
+      const entry = buildSrReceiptUser(row);
+
+      if (seenUsernames.has(entry.user.username)) {
+        throw new Error(`duplicate username in sheet: ${entry.user.username}`);
+      }
+
+      if (seenReceipts.has(entry.user.receipt_no)) {
+        throw new Error(`duplicate receipt_no in sheet: ${entry.user.receipt_no}`);
+      }
+
+      if (entry.user.email && seenEmails.has(entry.user.email)) {
+        throw new Error(`duplicate email in sheet: ${entry.user.email}`);
+      }
+
+      seenUsernames.add(entry.user.username);
+      seenReceipts.add(entry.user.receipt_no);
+      if (entry.user.email) {
+        seenEmails.add(entry.user.email);
+      }
+      validEntries.push({
+        rowNumber,
+        ...entry,
+      });
+    } catch (err) {
+      const receiptNo = normalizeValue(
+        getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
+      );
+
+      failedRows.push({
+        rowNumber,
+        username: receiptNo || "UNKNOWN",
+        receipt_no: receiptNo || "UNKNOWN",
+        error: err.message,
+      });
+    }
+  });
+
+  if (validEntries.length === 0) {
+    return {
+      success: false,
+      dryRun,
+      totalRows: rows.length,
+      validRows: 0,
+      inserted: 0,
+      failed: failedRows.length,
+      mapping: [],
+      failedRows,
+      message: "No valid SR receipt users found in the uploaded file",
+    };
+  }
+
+  const usernames = validEntries.map((entry) => entry.user.username);
+  const receiptNos = validEntries.map((entry) => entry.user.receipt_no);
+  const emails = validEntries.map((entry) => entry.user.email).filter(Boolean);
+  const existingUserQuery = [
+    { username: { $in: usernames } },
+    { receipt_no: { $in: receiptNos } },
+  ];
+
+  if (emails.length > 0) {
+    existingUserQuery.push({ email: { $in: emails } });
+  }
+
+  const existingUsers = await StudentUser.find(
+    { $or: existingUserQuery },
+    { username: 1, receipt_no: 1, email: 1 }
+  ).lean();
+
+  const existingUsernameSet = new Set(existingUsers.map((user) => user.username).filter(Boolean));
+  const existingReceiptSet = new Set(existingUsers.map((user) => user.receipt_no).filter(Boolean));
+  const existingEmailSet = new Set(existingUsers.map((user) => user.email).filter(Boolean));
+  const newEntries = [];
+
+  validEntries.forEach((entry) => {
+    if (existingUsernameSet.has(entry.user.username)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        user_type: entry.user.user_type,
+        receipt_no: entry.user.receipt_no,
+        error: "username already exists in database",
+      });
+      return;
+    }
+
+    if (existingReceiptSet.has(entry.user.receipt_no)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        user_type: entry.user.user_type,
+        receipt_no: entry.user.receipt_no,
+        error: "receipt_no already exists in database",
+      });
+      return;
+    }
+
+    if (entry.user.email && existingEmailSet.has(entry.user.email)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        receipt_no: entry.user.receipt_no,
+        error: "email already exists in database",
+      });
+      return;
+    }
+
+    newEntries.push(entry);
+  });
+
+  if (dryRun) {
+    return {
+      success: true,
+      dryRun: true,
+      totalRows: rows.length,
+      validRows: validEntries.length,
+      readyToInsert: newEntries.length,
+      inserted: 0,
+      failed: failedRows.length,
+      preview: newEntries.slice(0, 20).map((entry) => ({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        receipt_no: entry.user.receipt_no,
+        first_name: entry.user.first_name,
+        last_name: entry.user.last_name,
+        email: entry.user.email,
+        phone: entry.user.phone,
+        school_code: entry.user.school_code,
+        school_type: entry.user.school_type,
+        school_name: entry.user.school_name,
+        school_address: entry.user.school_address,
+        branch: entry.user.branch,
+        executive_phone: entry.user.executive_phone,
+        executive_name: entry.user.executive_name,
+        class: entry.user.class,
+        section: entry.user.section,
+        preparing_for: entry.user.preparing_for,
+        dob: entry.user.dob,
+        gender: entry.user.gender,
+      })),
+      failedRows,
+    };
+  }
+
+  if (newEntries.length === 0) {
+    return {
+      success: false,
+      dryRun,
+      totalRows: rows.length,
+      validRows: validEntries.length,
+      inserted: 0,
+      failed: failedRows.length,
+      mapping: [],
+      failedRows,
+      message: "No new SR receipt users to insert; all rows already exist or failed validation",
+    };
+  }
+
+  const entriesWithHashedPasswords = await hashUsersInBatches(newEntries);
+  const insertedUsers = await StudentUser.insertMany(
+    entriesWithHashedPasswords.map((entry) => entry.user),
+    { ordered: false }
+  );
+
+  const passwordByUsername = new Map(
+    entriesWithHashedPasswords.map((entry) => [
+      entry.user.username,
+      entry.tempPassword,
+    ])
+  );
+
+  const mapping = insertedUsers.map((user) => ({
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+    phone: user.phone,
+    username: user.username,
+    user_type: user.user_type,
+    receipt_no: user.receipt_no,
+    admission_number: user.admission_number,
+    password: passwordByUsername.get(user.username) || user.temp_password,
+    school_code: user.school_code,
+    school_type: user.school_type,
+    school_name: user.school_name,
+    school_address: user.school_address,
+    branch: user.branch,
+    executive_name: user.executive_name,
+    executive_phone: user.executive_phone,
+    class: user.class,
+    section: user.section,
+    preparing_for: user.preparing_for,
+    dob: user.dob,
+    gender: user.gender,
+    user_id: user._id.toString(),
+    import_status: "Inserted",
+  }));
+
+  const successfulUsers = mapping.map((user) => ({ ...user }));
+  const subscriptionAssignment = assignSubscriptions
+    ? await assignSubscriptionsToUsers(
+        mapping.map((user) => user.user_id),
+        {
+          adminToken: options.subscriptionAdminToken,
+          planId: options.subscriptionPlanId,
+        }
+      )
+    : {
+        status: "skipped",
+        message: "Subscription assignment was not requested",
+        assigned: 0,
+        failed: 0,
+        batches: [],
+      };
+
+  const mappingWithSubscriptionStatus = applySubscriptionStatus(
+    mapping,
+    subscriptionAssignment
+  );
+  const successfulUsersWithSubscriptionStatus = applySubscriptionStatus(
+    successfulUsers,
+    subscriptionAssignment
+  );
+  const summary = {
+    totalRecords: rows.length,
+    successfullyInserted: insertedUsers.length,
+    failedRecords: failedRows.length,
+    subscriptionAssignmentStatus: subscriptionAssignment.status,
+  };
+
+  const logInfo = writeImportLog(importId, {
+    importId,
+    importType: "sr_receipt_users",
+    createdAt: new Date().toISOString(),
+    sourceFileName: options.sourceFileName || null,
+    requestedBy: options.requestedBy || null,
+    summary,
+    sourceRows: rows,
+    successfulUsers: mappingWithSubscriptionStatus,
+    failedRows,
+    subscriptionAssignment,
+  });
+
+  await saveImportLogToDatabase({
+    importId,
+    importType: "sr_receipt_users",
     sourceFileName: options.sourceFileName || null,
     dryRun: false,
     requestedBy: options.requestedBy || null,
@@ -899,6 +1285,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         email: result.user.email,
         phone: result.user.phone,
         username: result.user.username,
+        user_type: result.user.user_type,
         user_id: result.user._id.toString(),
         school_name: result.user.school_name,
         school_type: result.user.school_type,
@@ -1003,5 +1390,6 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
 
 module.exports = {
   importSchoolStudentsFromExcel,
+  importSrReceiptUsersFromExcel,
   importOfflineReceiptUsersFromExcel,
 };
