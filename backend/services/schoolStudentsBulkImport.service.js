@@ -52,6 +52,10 @@ function normalizePhone(value) {
   return digitsOnly || null;
 }
 
+function normalizeReceiptNo(value) {
+  return normalizeValue(value)?.replace(/\.0+$/, "") || null;
+}
+
 function normalizeEmail(value) {
   return normalizeValue(value)?.toLowerCase() || null;
 }
@@ -163,6 +167,10 @@ function buildOfflineReceiptUsername(receiptNo) {
     .replace(/^_+|_+$/g, "");
 
   return `offline_${safeReceiptNo}`;
+}
+
+function buildReceiptAlreadyExistsMessage() {
+  return "receipt no already exists in database";
 }
 
 function buildPhone(row) {
@@ -281,7 +289,7 @@ function buildBaseUser(row) {
 }
 
 function buildSrReceiptUser(row) {
-  const receiptNo = normalizeValue(
+  const receiptNo = normalizeReceiptNo(
     getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
   );
   const firstName = normalizeValue(
@@ -376,7 +384,7 @@ function buildSrReceiptUser(row) {
 }
 
 function buildOfflineReceiptFields(row) {
-  const receiptNo = normalizeValue(
+  const receiptNo = normalizeReceiptNo(
     getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
   );
   const executiveName = normalizeValue(
@@ -540,7 +548,7 @@ async function createOrUpdateOfflineReceiptUser(receiptFields) {
   }).lean();
 
   if (existingReceipt) {
-    throw new Error("receipt_no already exists in database");
+    throw new Error(buildReceiptAlreadyExistsMessage(existingReceipt));
   }
 
   const existingUserByEmail = receiptFields.email
@@ -913,12 +921,12 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
     try {
       const entry = buildSrReceiptUser(row);
 
-      if (seenUsernames.has(entry.user.username)) {
-        throw new Error(`duplicate username in sheet: ${entry.user.username}`);
-      }
-
       if (seenReceipts.has(entry.user.receipt_no)) {
         throw new Error(`duplicate receipt_no in sheet: ${entry.user.receipt_no}`);
+      }
+
+      if (seenUsernames.has(entry.user.username)) {
+        throw new Error(`duplicate username in sheet: ${entry.user.username}`);
       }
 
       if (entry.user.email && seenEmails.has(entry.user.email)) {
@@ -935,7 +943,7 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
         ...entry,
       });
     } catch (err) {
-      const receiptNo = normalizeValue(
+      const receiptNo = normalizeReceiptNo(
         getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
       );
 
@@ -976,15 +984,32 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
 
   const existingUsers = await StudentUser.find(
     { $or: existingUserQuery },
-    { username: 1, receipt_no: 1, email: 1 }
+    { username: 1, receipt_no: 1, email: 1, user_type: 1, school_type: 1 }
   ).lean();
 
   const existingUsernameSet = new Set(existingUsers.map((user) => user.username).filter(Boolean));
-  const existingReceiptSet = new Set(existingUsers.map((user) => user.receipt_no).filter(Boolean));
+  const existingReceiptByNo = new Map(
+    existingUsers
+      .filter((user) => user.receipt_no)
+      .map((user) => [user.receipt_no, user])
+  );
   const existingEmailSet = new Set(existingUsers.map((user) => user.email).filter(Boolean));
   const newEntries = [];
 
   validEntries.forEach((entry) => {
+    if (existingReceiptByNo.has(entry.user.receipt_no)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        user_type: entry.user.user_type,
+        receipt_no: entry.user.receipt_no,
+        error: buildReceiptAlreadyExistsMessage(
+          existingReceiptByNo.get(entry.user.receipt_no)
+        ),
+      });
+      return;
+    }
+
     if (existingUsernameSet.has(entry.user.username)) {
       failedRows.push({
         rowNumber: entry.rowNumber,
@@ -992,17 +1017,6 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
         user_type: entry.user.user_type,
         receipt_no: entry.user.receipt_no,
         error: "username already exists in database",
-      });
-      return;
-    }
-
-    if (existingReceiptSet.has(entry.user.receipt_no)) {
-      failedRows.push({
-        rowNumber: entry.rowNumber,
-        username: entry.user.username,
-        user_type: entry.user.user_type,
-        receipt_no: entry.user.receipt_no,
-        error: "receipt_no already exists in database",
       });
       return;
     }
@@ -1214,7 +1228,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
       failedRows.push({
         rowNumber,
         receipt_no:
-          normalizeValue(
+          normalizeReceiptNo(
             getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
           ) || "UNKNOWN",
         error: err.message,
@@ -1237,17 +1251,40 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
     };
   }
 
+  const receiptNos = validEntries.map((entry) => entry.receiptFields.receipt_no);
+  const existingReceiptUsers = await StudentUser.find(
+    { receipt_no: { $in: receiptNos } },
+    { receipt_no: 1 }
+  ).lean();
+  const existingReceiptSet = new Set(
+    existingReceiptUsers.map((user) => user.receipt_no).filter(Boolean)
+  );
+  const readyEntries = [];
+
+  validEntries.forEach((entry) => {
+    if (existingReceiptSet.has(entry.receiptFields.receipt_no)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        receipt_no: entry.receiptFields.receipt_no,
+        error: buildReceiptAlreadyExistsMessage(),
+      });
+      return;
+    }
+
+    readyEntries.push(entry);
+  });
+
   if (dryRun) {
     return {
       success: true,
       dryRun: true,
       totalRows: rows.length,
       validRows: validEntries.length,
-      readyToProcess: validEntries.length,
+      readyToProcess: readyEntries.length,
       inserted: 0,
       updated: 0,
       failed: failedRows.length,
-      preview: validEntries.slice(0, 20).map((entry) => ({
+      preview: readyEntries.slice(0, 20).map((entry) => ({
         rowNumber: entry.rowNumber,
         receipt_no: entry.receiptFields.receipt_no,
         first_name: entry.receiptFields.first_name,
@@ -1271,9 +1308,24 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
     };
   }
 
+  if (readyEntries.length === 0) {
+    return {
+      success: false,
+      dryRun,
+      totalRows: rows.length,
+      validRows: validEntries.length,
+      inserted: 0,
+      updated: 0,
+      failed: failedRows.length,
+      mapping: [],
+      failedRows,
+      message: "No new receipt users to insert; all rows already exist or failed validation",
+    };
+  }
+
   const mapping = [];
 
-  for (const entry of validEntries) {
+  for (const entry of readyEntries) {
     try {
       const result = await createOrUpdateOfflineReceiptUser(entry.receiptFields);
 
