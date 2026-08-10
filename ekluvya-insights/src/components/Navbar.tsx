@@ -1,7 +1,6 @@
 import { Moon, Sun, Tag, LogOut, Eye, Edit, Shield, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
-import { BASE_URL } from "@/config/api";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -27,11 +26,11 @@ const Navbar = ({
 }: NavbarProps) => {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(false);
-  const [completeData, setCompleteData] = useState<any[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'accountant' | null>(null);
   const [userName, setUserName] = useState<string>('');
+  const completeData = useMemo(() => allTransactions || [], [allTransactions]);
+  const dataLoading = isLoading;
 
   // Fetch user info from localStorage on component mount
   useEffect(() => {
@@ -52,32 +51,6 @@ const Navbar = ({
   useEffect(() => {
     document.documentElement.classList.remove("dark");
   }, []);
-
-  // Fetch ALL transactions from the beginning OR use props
-  useEffect(() => {
-    const fetchCompleteData = async () => {
-      try {
-        setDataLoading(true);
-        if (allTransactions && allTransactions.length > 0) {
-          setCompleteData(allTransactions);
-        } else {
-          const response = await fetch(`${BASE_URL}/transactions?limit=100000`);
-          const data = await response.json();
-
-          if (data.success && data.data) {
-            setCompleteData(data.data);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch complete data:", error);
-        setCompleteData([]);
-      } finally {
-        setDataLoading(false);
-      }
-    };
-
-    fetchCompleteData();
-  }, [allTransactions]);
 
   const toggleTheme = () => {
     const newIsDark = !isDark;
@@ -192,6 +165,11 @@ const Navbar = ({
   const getTransactionKey = (t: any): string => {
     if (!t) return "";
 
+    const userType = String(t.user_type || "").trim().toLowerCase();
+    const userId = String(t.userId || t.user_id || "").trim();
+    const username = String(t.username || t.userName || "").trim().toLowerCase();
+    const transactionId = String(t.transactionId || "").trim();
+    const paymentId = String(t.paymentId || "").trim();
     const phone = String(t.phone || t.userPhone || "").trim();
     const email = String(t.email || t.userEmail || "").trim().toLowerCase();
     const agent = String(t.agentName || "").trim().toLowerCase();
@@ -199,6 +177,17 @@ const Navbar = ({
     const amount = String(t.amount ?? "").trim();
     const school = String(t.school_code || "").trim().toLowerCase();
     const status = String(t.paymentStatus ?? t.status ?? t.paymentStatusText ?? "").trim().toLowerCase();
+
+    if (userType === "b2b") {
+      const userKey = userId || username || phone || email;
+      const paymentKey = transactionId || paymentId;
+
+      if (!userKey && !paymentKey && !school && !coupon && !amount) {
+        return "";
+      }
+
+      return `b2b:${userKey}|${paymentKey}|${school}|${coupon}|${amount}|${status}`;
+    }
 
     if (!phone && !email && !school && !coupon && !amount) {
       return "";

@@ -1568,6 +1568,17 @@ const Index: React.FC = () => {
     [enhancedTransactions]
   );
 
+  const navbarTransactions = useMemo(
+    () =>
+      transactionUserType === "b2b" && selectedSchoolOption
+        ? uniqueFilteredTransactions
+        : allTransactionsData,
+    [allTransactionsData, selectedSchoolOption, transactionUserType, uniqueFilteredTransactions]
+  );
+
+  const navbarSummaryCounts =
+    transactionUserType === "b2b" ? null : data?.summary || null;
+
   // Show loading while fetching user info
   if (userLoading) {
     return (
@@ -1584,10 +1595,10 @@ const Index: React.FC = () => {
     <div className="min-h-screen bg-background bg-grid-pattern">
       <Navbar
         totalTransactions={data?.total || 0}
-        allTransactions={allTransactionsData}
-        isLoading={isLoading}
-        ignoreDateFilter={transactionUserType === "b2b" && Boolean(debouncedSchoolCode)}
-        summaryCounts={data?.summary || null}
+        allTransactions={navbarTransactions}
+        isLoading={showLoading}
+        ignoreDateFilter={transactionUserType === "b2b" && Boolean(selectedSchoolOption)}
+        summaryCounts={navbarSummaryCounts}
       />
 
       <main className="container mx-auto px-4 py-8">
