@@ -45,7 +45,10 @@ export const getUserDisplayName = (user: ImportedUser) =>
   [user.first_name, user.last_name].filter(Boolean).join(" ") || "-";
 
 export const getSchoolValue = (user: ImportedUser) =>
-  user.school_code || user.school_name || "-";
+  [user.school_code, user.school_name, user.school_address]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" - ") || "-";
 
 export const inferAdmissionNumber = (user: ImportedUser) => {
   if (user.admission_number) return user.admission_number;

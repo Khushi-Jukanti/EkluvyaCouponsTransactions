@@ -30,6 +30,29 @@ type UserManagementTableProps = {
 
 const PAGE_SIZE = 10;
 
+type SchoolFilterOption = {
+  value: string;
+  label: string;
+};
+
+const getSchoolFilterOption = (user: ImportedUser): SchoolFilterOption | null => {
+  const schoolCode = String(user.school_code || "").trim();
+  const schoolName = String(user.school_name || "").trim();
+  const schoolAddress = String(user.school_address || "").trim();
+  const label = [schoolCode, schoolName, schoolAddress].filter(Boolean).join(" - ");
+
+  if (!label) {
+    return null;
+  }
+
+  return {
+    value: schoolCode
+      ? `code:${schoolCode.toUpperCase()}`
+      : `school:${schoolName.toLowerCase()}|${schoolAddress.toLowerCase()}`,
+    label,
+  };
+};
+
 const UserManagementTable = ({
   users,
   failedRows,
@@ -43,10 +66,17 @@ const UserManagementTable = ({
   const [page, setPage] = useState(1);
 
   const schools = useMemo(() => {
-    const values = users
-      .map((user) => user.school_code || user.school_name)
-      .filter(Boolean) as string[];
-    return Array.from(new Set(values)).sort();
+    const map = new Map<string, SchoolFilterOption>();
+
+    users.forEach((user) => {
+      const option = getSchoolFilterOption(user);
+
+      if (option) {
+        map.set(option.value, option);
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [users]);
 
   const rows = useMemo(() => {
@@ -73,6 +103,7 @@ const UserManagementTable = ({
         user.last_name,
         user.school_code,
         user.school_name,
+        user.school_address,
         inferAdmissionNumber(user),
         user.phone,
         row.error,
@@ -87,8 +118,7 @@ const UserManagementTable = ({
         (subscriptionFilter === "all" ||
           (user.subscription_status || "pending").toLowerCase() === subscriptionFilter) &&
         (schoolFilter === "all" ||
-          user.school_code === schoolFilter ||
-          user.school_name === schoolFilter) &&
+          getSchoolFilterOption(user)?.value === schoolFilter) &&
         (userTypeFilter === "all" || userType === userTypeFilter) &&
         searchText.includes(query.trim().toLowerCase())
       );
@@ -146,7 +176,7 @@ const UserManagementTable = ({
             <SelectContent>
               <SelectItem value="all">All Schools</SelectItem>
               {schools.map((school) => (
-                <SelectItem key={school} value={school}>{school}</SelectItem>
+                <SelectItem key={school.value} value={school.value}>{school.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>

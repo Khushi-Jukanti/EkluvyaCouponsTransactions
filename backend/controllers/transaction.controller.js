@@ -207,6 +207,8 @@ const getAllTransactions = async (req, res) => {
           $toLower: { $ifNull: ["$user.user_type", "b2c"] },
         },
         resolvedSchoolCode: { $ifNull: ["$user.school_code", ""] },
+        resolvedSchoolName: { $ifNull: ["$user.school_name", ""] },
+        resolvedSchoolAddress: { $ifNull: ["$user.school_address", ""] },
         resolvedUsername: { $ifNull: ["$user.username", ""] },
       },
     });
@@ -289,6 +291,20 @@ const getAllTransactions = async (req, res) => {
           $cond: [
             { $eq: ["$resolvedUserType", "b2b"] },
             "$resolvedSchoolCode",
+            "$$REMOVE",
+          ],
+        },
+        school_name: {
+          $cond: [
+            { $eq: ["$resolvedUserType", "b2b"] },
+            "$resolvedSchoolName",
+            "$$REMOVE",
+          ],
+        },
+        school_address: {
+          $cond: [
+            { $eq: ["$resolvedUserType", "b2b"] },
+            "$resolvedSchoolAddress",
             "$$REMOVE",
           ],
         },

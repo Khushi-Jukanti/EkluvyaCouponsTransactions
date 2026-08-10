@@ -23,7 +23,6 @@ const getSchools = async (req, res) => {
       {
         $match: {
           user_type: "b2b",
-          school_code: { $exists: true, $nin: [null, ""] },
         },
       },
       {
@@ -37,18 +36,53 @@ const getSchools = async (req, res) => {
       },
       {
         $match: {
-          normalized_school_code: { $ne: "" },
+          $or: [
+            { normalized_school_code: { $ne: "" } },
+            { normalized_school_name: { $ne: "" } },
+            { normalized_school_address: { $ne: "" } },
+          ],
+        },
+      },
+      {
+        $addFields: {
+          school_group_key: {
+            $cond: [
+              { $ne: ["$normalized_school_code", ""] },
+              { $concat: ["code:", "$normalized_school_code"] },
+              {
+                $concat: [
+                  "school:",
+                  { $toLower: "$normalized_school_name" },
+                  "|",
+                  { $toLower: "$normalized_school_address" },
+                ],
+              },
+            ],
+          },
+          has_school_details: {
+            $cond: [
+              {
+                $or: [
+                  { $ne: ["$normalized_school_name", ""] },
+                  { $ne: ["$normalized_school_address", ""] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
         },
       },
       {
         $sort: {
+          has_school_details: -1,
           updated_at: -1,
           created_at: -1,
         },
       },
       {
         $group: {
-          _id: "$normalized_school_code",
+          _id: "$school_group_key",
           school_code: { $first: "$normalized_school_code" },
           school_name: { $first: "$normalized_school_name" },
           school_address: { $first: "$normalized_school_address" },
@@ -57,6 +91,8 @@ const getSchools = async (req, res) => {
       {
         $sort: {
           school_code: 1,
+          school_name: 1,
+          school_address: 1,
         },
       },
       {

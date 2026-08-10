@@ -171,6 +171,55 @@ const getSchoolOptionLabel = (school: SchoolOption): string => {
     .join(" - ");
 };
 
+const normalizeSchoolText = (value: any): string => String(value || "").trim();
+
+const getSchoolOptionValue = (school: SchoolOption): string => {
+  const schoolCode = normalizeSchoolText(school.school_code).toUpperCase();
+  const schoolName = normalizeSchoolText(school.school_name).toLowerCase();
+  const schoolAddress = normalizeSchoolText(school.school_address).toLowerCase();
+
+  if (schoolCode) {
+    return `code:${schoolCode}`;
+  }
+
+  return `school:${schoolName}|${schoolAddress}`;
+};
+
+const getSchoolOptionFromTransaction = (transaction: any): SchoolOption | null => {
+  const school = {
+    school_code: normalizeSchoolText(transaction?.school_code).toUpperCase(),
+    school_name: normalizeSchoolText(
+      transaction?.school_name ?? transaction?.schoolName ?? transaction?.school
+    ),
+    school_address: normalizeSchoolText(
+      transaction?.school_address ?? transaction?.schoolAddress ?? transaction?.address
+    ),
+  };
+
+  if (!school.school_code && !school.school_name && !school.school_address) {
+    return null;
+  }
+
+  return school;
+};
+
+const doesTransactionMatchSchool = (transaction: any, school: SchoolOption): boolean => {
+  const transactionSchool = getSchoolOptionFromTransaction(transaction);
+
+  if (!transactionSchool) {
+    return false;
+  }
+
+  if (school.school_code) {
+    return transactionSchool.school_code === school.school_code;
+  }
+
+  return (
+    transactionSchool.school_name.toLowerCase() === school.school_name.toLowerCase() &&
+    transactionSchool.school_address.toLowerCase() === school.school_address.toLowerCase()
+  );
+};
+
 const Index: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -188,6 +237,7 @@ const Index: React.FC = () => {
   const [debouncedSchoolCode, setDebouncedSchoolCode] = useState("");
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [schoolsLoading, setSchoolsLoading] = useState(false);
+  const [b2bTransactionsLoading, setB2bTransactionsLoading] = useState(false);
 
   const [couponSearchCode, setCouponSearchCode] = useState("");
   const [couponSearchTrigger, setCouponSearchTrigger] = useState("");
@@ -232,7 +282,7 @@ const Index: React.FC = () => {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setDebouncedSchoolCode(schoolCode.trim().toUpperCase());
+      setDebouncedSchoolCode(schoolCode.trim());
     }, 250);
 
     return () => window.clearTimeout(timeout);
@@ -415,6 +465,45 @@ const Index: React.FC = () => {
   }
   };
 
+  const schoolOptions = useMemo(() => {
+    const map = new Map<string, SchoolOption>();
+
+    [...schools, ...allTransactionsData.map(getSchoolOptionFromTransaction).filter(Boolean) as SchoolOption[]]
+      .forEach((school) => {
+        const normalizedSchool = {
+          school_code: normalizeSchoolText(school.school_code).toUpperCase(),
+          school_name: normalizeSchoolText(school.school_name),
+          school_address: normalizeSchoolText(school.school_address),
+        };
+        const value = getSchoolOptionValue(normalizedSchool);
+
+        if (value !== "school:|") {
+          const existingSchool = map.get(value);
+          const existingDetails = getSchoolOptionLabel(existingSchool || {
+            school_code: "",
+            school_name: "",
+            school_address: "",
+          });
+          const nextDetails = getSchoolOptionLabel(normalizedSchool);
+
+          if (!existingSchool || nextDetails.length > existingDetails.length) {
+            map.set(value, normalizedSchool);
+          }
+        }
+      });
+
+    return Array.from(map.values()).sort((a, b) =>
+      getSchoolOptionLabel(a).localeCompare(getSchoolOptionLabel(b))
+    );
+  }, [allTransactionsData, schools]);
+
+  const selectedSchoolOption = useMemo(
+    () => schoolOptions.find((school) => getSchoolOptionValue(school) === debouncedSchoolCode) || null,
+    [debouncedSchoolCode, schoolOptions]
+  );
+
+  const selectedSchoolCodeForApi = selectedSchoolOption?.school_code || "";
+
   const fetchTransactionsUrl = (limit: number) => {
     const params = new URLSearchParams({
       limit: String(limit),
@@ -423,8 +512,8 @@ const Index: React.FC = () => {
       _t: Date.now().toString(),
     });
 
-    if (transactionUserType === "b2b" && debouncedSchoolCode) {
-      params.append("school_code", debouncedSchoolCode);
+    if (transactionUserType === "b2b" && selectedSchoolCodeForApi) {
+      params.append("school_code", selectedSchoolCodeForApi);
     }
 
     return `${BASE_URL}/transactions?${params.toString()}`;
@@ -586,31 +675,55 @@ const Index: React.FC = () => {
 
   // Fetch all data for topper dashboard (independent of date filter) WITH PAYMENT DATA
   useEffect(() => {
+    let cancelled = false;
+
     const fetchAllTopperData = async () => {
+      setB2bTransactionsLoading(true);
+
       try {
         const { transactions, paymentData, agentAccountNumbers } = await fetchAllTransactionsWithPayments();
+        if (cancelled) return;
+
         setAllTopperData(transactions);
         setAllTransactionsData(transactions);
         setTransactionsPaymentData(paymentData);
         setAgentsMap(agentAccountNumbers || {});
       } catch (err) {
+        if (cancelled) return;
+
         console.error("Failed to load topper data with payment data:", err);
         // Fallback: try to fetch just transactions without payment data
         try {
           const res = await fetch(fetchTransactionsUrl(10000));
           const json = await res.json();
+          if (cancelled) return;
+
           if (json.success && json.data) {
             const fallbackTransactions = dedupeTransactionsByIdentity(json.data);
             setAllTopperData(fallbackTransactions);
             setAllTransactionsData(fallbackTransactions);
           }
         } catch (fallbackErr) {
+          if (cancelled) return;
+
           console.error("Fallback also failed:", fallbackErr);
+        } finally {
+          if (!cancelled) {
+            setB2bTransactionsLoading(false);
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setB2bTransactionsLoading(false);
         }
       }
     };
 
     fetchAllTopperData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [transactionUserType, debouncedSchoolCode]);
 
   // Fetch total agents count
@@ -647,7 +760,7 @@ const Index: React.FC = () => {
     sortOrder: sortDirection,
     status: statusFilter,
     userType: transactionUserType,
-    schoolCode: debouncedSchoolCode,
+    schoolCode: selectedSchoolCodeForApi,
   });
 
   const {
@@ -660,11 +773,15 @@ const Index: React.FC = () => {
   // Client-side search
   const searchedList = useMemo(() => {
     const fullSource = allTransactionsData.length > 0 ? allTransactionsData : data?.data || [];
-    const shouldApplyDateFilter = !(transactionUserType === "b2b" && Boolean(debouncedSchoolCode));
+    const shouldApplyDateFilter = !(transactionUserType === "b2b" && Boolean(selectedSchoolOption));
     const dateFilteredSource = shouldApplyDateFilter
       ? fullSource.filter((t: any) => isWithinDateRange(t, dateRange))
       : fullSource;
-    const searchSource = dedupeTransactionsByIdentity(dateFilteredSource);
+    const schoolFilteredSource =
+      transactionUserType === "b2b" && selectedSchoolOption
+        ? dateFilteredSource.filter((t: any) => doesTransactionMatchSchool(t, selectedSchoolOption))
+        : dateFilteredSource;
+    const searchSource = dedupeTransactionsByIdentity(schoolFilteredSource);
 
     if (!searchSource.length || !searchQuery.trim()) return searchSource;
 
@@ -679,6 +796,8 @@ const Index: React.FC = () => {
       const agentLocation = String(t.agentLocation ?? t.location ?? "").toLowerCase();
       const email = String(t.email ?? "").toLowerCase();
       const school = String(t.school_code ?? "").toLowerCase();
+      const schoolName = String(t.school_name ?? t.schoolName ?? t.school ?? "").toLowerCase();
+      const schoolAddress = String(t.school_address ?? t.schoolAddress ?? t.address ?? "").toLowerCase();
       const userType = String(t.user_type ?? "").toLowerCase();
 
       return (
@@ -690,10 +809,12 @@ const Index: React.FC = () => {
         agentLocation.includes(q) ||
         email.includes(q) ||
         school.includes(q) ||
+        schoolName.includes(q) ||
+        schoolAddress.includes(q) ||
         userType.includes(q)
       );
     });
-  }, [allTransactionsData, data?.data, dateRange, debouncedSchoolCode, searchQuery, transactionUserType]);
+  }, [allTransactionsData, data?.data, dateRange, searchQuery, selectedSchoolOption, transactionUserType]);
 
   // Check if there's a search query to show transactions
   const hasSearchQuery = searchQuery.trim().length > 0;
@@ -1388,7 +1509,7 @@ const Index: React.FC = () => {
   };
 
   // Only show loading when actually fetching from server
-  const showLoading = isLoading || isFetching;
+  const showLoading = isLoading || isFetching || b2bTransactionsLoading;
 
   // Check if date range is different from default
   const isDefaultDateRange =
@@ -1653,6 +1774,7 @@ const Index: React.FC = () => {
                     <Select
                       value={schoolCode || SCHOOL_FILTER_ALL}
                       onValueChange={(value) => {
+                        setB2bTransactionsLoading(true);
                         setSchoolCode(value === SCHOOL_FILTER_ALL ? "" : value);
                         setPage(1);
                       }}
@@ -1663,16 +1785,16 @@ const Index: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent className="max-w-[min(520px,calc(100vw-2rem))]">
                         <SelectItem value={SCHOOL_FILTER_ALL}>All schools</SelectItem>
-                        {schools.map((school) => (
+                        {schoolOptions.map((school) => (
                           <SelectItem
-                            key={school.school_code}
-                            value={school.school_code}
+                            key={getSchoolOptionValue(school)}
+                            value={getSchoolOptionValue(school)}
                             className="border-b border-border/40 py-3 last:border-b-0"
                           >
                             {getSchoolOptionLabel(school)}
                           </SelectItem>
                         ))}
-                        {!schoolsLoading && schools.length === 0 && (
+                        {!schoolsLoading && schoolOptions.length === 0 && (
                           <SelectItem value="__no_schools__" disabled>
                             No schools found
                           </SelectItem>
