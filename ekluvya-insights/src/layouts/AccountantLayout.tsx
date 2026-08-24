@@ -5,7 +5,7 @@ const AccountantLayout = () => {
   return (
     <div className="min-h-screen bg-background">
       <AccountantSidebar />
-      <div className="min-h-screen lg:pl-72">
+      <div className="min-h-screen transition-[padding] duration-300 ease-in-out lg:pl-20">
         <Outlet />
       </div>
     </div>
