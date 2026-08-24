@@ -23,13 +23,35 @@ async function saveImportLogToDatabase(payload) {
   ).lean();
 }
 
-async function listImportLogs({ page = 1, limit = 20, importType } = {}) {
+async function listImportLogs({ page = 1, limit = 20, importType, from, to } = {}) {
   const safePage = Math.max(Number(page) || 1, 1);
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const query = {};
 
   if (importType) {
     query.import_type = importType;
+  }
+
+  if (from || to) {
+    query.created_at = {};
+
+    if (from) {
+      const fromDate = new Date(`${from}T00:00:00.000+05:30`);
+      if (!Number.isNaN(fromDate.getTime())) {
+        query.created_at.$gte = fromDate;
+      }
+    }
+
+    if (to) {
+      const toDate = new Date(`${to}T23:59:59.999+05:30`);
+      if (!Number.isNaN(toDate.getTime())) {
+        query.created_at.$lte = toDate;
+      }
+    }
+
+    if (Object.keys(query.created_at).length === 0) {
+      delete query.created_at;
+    }
   }
 
   const [items, total] = await Promise.all([

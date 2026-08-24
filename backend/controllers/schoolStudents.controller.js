@@ -340,6 +340,8 @@ const getImportHistory = async (req, res) => {
       page: req.query.page,
       limit: req.query.limit,
       importType: req.query.importType,
+      from: req.query.from,
+      to: req.query.to,
     });
 
     return res.json({

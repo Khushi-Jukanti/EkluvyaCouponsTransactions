@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, FileSpreadsheet, Loader2, RefreshCw, Search, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalendarClock, FileSpreadsheet, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -73,11 +73,29 @@ const formatDateTime = (value?: string) =>
       }).format(new Date(value))
     : "-";
 
+const isInDateRange = (value: string, from?: string, to?: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  if (from) {
+    const fromDate = new Date(`${from}T00:00:00`);
+    if (date < fromDate) return false;
+  }
+
+  if (to) {
+    const toDate = new Date(`${to}T23:59:59.999`);
+    if (date > toDate) return false;
+  }
+
+  return true;
+};
+
 const ImportHistory = () => {
   const [items, setItems] = useState<ImportLogListItem[]>([]);
   const [selectedImportId, setSelectedImportId] = useState<string>("");
   const [details, setDetails] = useState<ImportLogDetails | null>(null);
   const [schoolSearch, setSchoolSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
   const [isLoading, setIsLoading] = useState(false);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
 
@@ -86,9 +104,13 @@ const ImportHistory = () => {
   const filteredItems = useMemo(() => {
     const query = schoolSearch.trim().toLowerCase();
 
-    if (!query) return items;
-
     return items.filter((item) => {
+      if (!isInDateRange(item.created_at, dateFilter.from, dateFilter.to)) {
+        return false;
+      }
+
+      if (!query) return true;
+
       const searchableText = [
         item.import_id,
         item.source_file_name,
@@ -108,26 +130,29 @@ const ImportHistory = () => {
 
       return searchableText.includes(query);
     });
-  }, [items, schoolSearch]);
+  }, [dateFilter.from, dateFilter.to, items, schoolSearch]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       setIsLoading(true);
       const { data } = await api.get("/school-students/import-history", {
-        params: { page: 1, limit: 50 },
+        params: {
+          page: 1,
+          limit: 100,
+          from: dateFilter.from || undefined,
+          to: dateFilter.to || undefined,
+        },
       });
 
       setItems(data.items || []);
 
-      if (!selectedImportId && data.items?.[0]?.import_id) {
-        setSelectedImportId(data.items[0].import_id);
-      }
+      setSelectedImportId((current) => current || data.items?.[0]?.import_id || "");
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to fetch import history");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dateFilter.from, dateFilter.to]);
 
   const fetchDetails = async (importId: string) => {
     if (!importId) return;
@@ -145,17 +170,29 @@ const ImportHistory = () => {
 
   useEffect(() => {
     fetchHistory();
-  }, []);
+  }, [fetchHistory]);
 
   useEffect(() => {
     fetchDetails(selectedImportId);
   }, [selectedImportId]);
 
+  useEffect(() => {
+    if (filteredItems.length === 0) {
+      setSelectedImportId("");
+      setDetails(null);
+      return;
+    }
+
+    if (!filteredItems.some((item) => item.import_id === selectedImportId)) {
+      setSelectedImportId(filteredItems[0].import_id);
+    }
+  }, [filteredItems, selectedImportId]);
+
   return (
-    <div className="min-h-screen bg-background bg-grid-pattern">
-      <main className="w-full px-4 py-6 lg:px-6">
-        <div className="space-y-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <div className="h-screen overflow-hidden bg-background bg-grid-pattern">
+      <main className="flex h-full w-full flex-col overflow-hidden px-4 py-6 lg:px-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-6">
+          <div className="shrink-0 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
                 Import History
@@ -182,15 +219,53 @@ const ImportHistory = () => {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[420px_minmax(0,1fr)]">
-            <Card className="glass-card">
-              <CardHeader>
+          <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[420px_minmax(0,1fr)]">
+            <Card className="glass-card flex min-h-0 flex-col overflow-hidden">
+              <CardHeader className="space-y-4">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CalendarClock className="h-5 w-5 text-primary" />
                   History
                 </CardTitle>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    From
+                    <input
+                      type="date"
+                      value={dateFilter.from}
+                      max={dateFilter.to || undefined}
+                      onChange={(event) =>
+                        setDateFilter((current) => ({ ...current, from: event.target.value }))
+                      }
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    To
+                    <input
+                      type="date"
+                      value={dateFilter.to}
+                      min={dateFilter.from || undefined}
+                      onChange={(event) =>
+                        setDateFilter((current) => ({ ...current, to: event.target.value }))
+                      }
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                  </label>
+                </div>
+                {(dateFilter.from || dateFilter.to) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDateFilter({ from: "", to: "" })}
+                    className="w-full gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear Dates
+                  </Button>
+                )}
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-3">
                 {filteredItems.map((item) => (
                   <button
                     key={item.import_id}
@@ -225,13 +300,13 @@ const ImportHistory = () => {
 
                 {!isLoading && filteredItems.length === 0 && (
                   <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    {items.length === 0 ? "No import history found yet." : "No imports match this school search."}
+                    {items.length === 0 ? "No import history found yet." : "No imports match these filters."}
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <div className="space-y-6">
+            <div className="min-h-0 space-y-6 overflow-y-auto pr-2">
               {isDetailsLoading && (
                 <Card className="glass-card">
                   <CardContent className="flex items-center gap-3 p-6 text-sm text-muted-foreground">
