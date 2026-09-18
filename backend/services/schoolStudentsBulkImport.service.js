@@ -173,6 +173,14 @@ function buildReceiptAlreadyExistsMessage() {
   return "receipt no already exists in database";
 }
 
+function buildDuplicatePhoneInSheetMessage(phone) {
+  return `duplicate phone number in sheet: ${phone}`;
+}
+
+function buildPhoneAlreadyExistsMessage(phone) {
+  return `phone number already exists in database: ${phone}`;
+}
+
 function buildPhone(row) {
   return normalizePhone(
     getRowValue(row, [
@@ -554,19 +562,17 @@ async function createOrUpdateOfflineReceiptUser(receiptFields) {
   const existingUserByEmail = receiptFields.email
     ? await StudentUser.findOne({ email: receiptFields.email }).lean()
     : null;
-  const existingUserByPhone = receiptFields.phone
-    ? await StudentUser.findOne({ phone: receiptFields.phone }).lean()
-    : null;
+  if (receiptFields.phone) {
+    const existingUserByPhone = await StudentUser.findOne({
+      phone: receiptFields.phone,
+    }).lean();
 
-  if (
-    existingUserByEmail &&
-    existingUserByPhone &&
-    existingUserByEmail._id.toString() !== existingUserByPhone._id.toString()
-  ) {
-    throw new Error("email and phone belong to different users");
+    if (existingUserByPhone) {
+      throw new Error(buildPhoneAlreadyExistsMessage(receiptFields.phone));
+    }
   }
 
-  const existingUser = existingUserByEmail || existingUserByPhone;
+  const existingUser = existingUserByEmail;
 
   if (existingUser) {
     if (existingUser.receipt_no) {
@@ -644,6 +650,7 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
   const validEntries = [];
   const seenUsernames = new Set();
   const seenEmails = new Set();
+  const seenPhones = new Set();
 
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
@@ -659,9 +666,16 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
         throw new Error(`duplicate email in sheet: ${entry.user.email}`);
       }
 
+      if (entry.user.phone && seenPhones.has(entry.user.phone)) {
+        throw new Error(buildDuplicatePhoneInSheetMessage(entry.user.phone));
+      }
+
       seenUsernames.add(entry.user.username);
       if (entry.user.email) {
         seenEmails.add(entry.user.email);
+      }
+      if (entry.user.phone) {
+        seenPhones.add(entry.user.phone);
       }
       validEntries.push({
         rowNumber,
@@ -695,19 +709,25 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
 
   const usernames = validEntries.map((entry) => entry.user.username);
   const emails = validEntries.map((entry) => entry.user.email).filter(Boolean);
+  const phones = validEntries.map((entry) => entry.user.phone).filter(Boolean);
   const existingUserQuery = [{ username: { $in: usernames } }];
 
   if (emails.length > 0) {
     existingUserQuery.push({ email: { $in: emails } });
   }
 
+  if (phones.length > 0) {
+    existingUserQuery.push({ phone: { $in: phones } });
+  }
+
   const existingUsers = await StudentUser.find(
     { $or: existingUserQuery },
-    { username: 1, email: 1 }
+    { username: 1, email: 1, phone: 1 }
   ).lean();
 
   const existingUsernameSet = new Set(existingUsers.map((user) => user.username).filter(Boolean));
   const existingEmailSet = new Set(existingUsers.map((user) => user.email).filter(Boolean));
+  const existingPhoneSet = new Set(existingUsers.map((user) => user.phone).filter(Boolean));
   const newEntries = [];
 
   validEntries.forEach((entry) => {
@@ -725,6 +745,16 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
         rowNumber: entry.rowNumber,
         username: entry.user.username,
         error: "email already exists in database",
+      });
+      return;
+    }
+
+    if (entry.user.phone && existingPhoneSet.has(entry.user.phone)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        phone: entry.user.phone,
+        error: buildPhoneAlreadyExistsMessage(entry.user.phone),
       });
       return;
     }
@@ -914,6 +944,7 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
   const seenUsernames = new Set();
   const seenReceipts = new Set();
   const seenEmails = new Set();
+  const seenPhones = new Set();
 
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
@@ -933,10 +964,17 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
         throw new Error(`duplicate email in sheet: ${entry.user.email}`);
       }
 
+      if (entry.user.phone && seenPhones.has(entry.user.phone)) {
+        throw new Error(buildDuplicatePhoneInSheetMessage(entry.user.phone));
+      }
+
       seenUsernames.add(entry.user.username);
       seenReceipts.add(entry.user.receipt_no);
       if (entry.user.email) {
         seenEmails.add(entry.user.email);
+      }
+      if (entry.user.phone) {
+        seenPhones.add(entry.user.phone);
       }
       validEntries.push({
         rowNumber,
@@ -973,6 +1011,7 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
   const usernames = validEntries.map((entry) => entry.user.username);
   const receiptNos = validEntries.map((entry) => entry.user.receipt_no);
   const emails = validEntries.map((entry) => entry.user.email).filter(Boolean);
+  const phones = validEntries.map((entry) => entry.user.phone).filter(Boolean);
   const existingUserQuery = [
     { username: { $in: usernames } },
     { receipt_no: { $in: receiptNos } },
@@ -982,9 +1021,13 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
     existingUserQuery.push({ email: { $in: emails } });
   }
 
+  if (phones.length > 0) {
+    existingUserQuery.push({ phone: { $in: phones } });
+  }
+
   const existingUsers = await StudentUser.find(
     { $or: existingUserQuery },
-    { username: 1, receipt_no: 1, email: 1, user_type: 1, school_type: 1 }
+    { username: 1, receipt_no: 1, email: 1, phone: 1, user_type: 1, school_type: 1 }
   ).lean();
 
   const existingUsernameSet = new Set(existingUsers.map((user) => user.username).filter(Boolean));
@@ -994,6 +1037,7 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
       .map((user) => [user.receipt_no, user])
   );
   const existingEmailSet = new Set(existingUsers.map((user) => user.email).filter(Boolean));
+  const existingPhoneSet = new Set(existingUsers.map((user) => user.phone).filter(Boolean));
   const newEntries = [];
 
   validEntries.forEach((entry) => {
@@ -1027,6 +1071,17 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
         username: entry.user.username,
         receipt_no: entry.user.receipt_no,
         error: "email already exists in database",
+      });
+      return;
+    }
+
+    if (entry.user.phone && existingPhoneSet.has(entry.user.phone)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        receipt_no: entry.user.receipt_no,
+        phone: entry.user.phone,
+        error: buildPhoneAlreadyExistsMessage(entry.user.phone),
       });
       return;
     }
@@ -1208,6 +1263,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
   const failedRows = [];
   const validEntries = [];
   const seenReceipts = new Set();
+  const seenPhones = new Set();
 
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
@@ -1219,7 +1275,14 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         throw new Error(`duplicate receipt_no in sheet: ${receiptFields.receipt_no}`);
       }
 
+      if (receiptFields.phone && seenPhones.has(receiptFields.phone)) {
+        throw new Error(buildDuplicatePhoneInSheetMessage(receiptFields.phone));
+      }
+
       seenReceipts.add(receiptFields.receipt_no);
+      if (receiptFields.phone) {
+        seenPhones.add(receiptFields.phone);
+      }
       validEntries.push({
         rowNumber,
         receiptFields,
@@ -1252,12 +1315,22 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
   }
 
   const receiptNos = validEntries.map((entry) => entry.receiptFields.receipt_no);
+  const phones = validEntries.map((entry) => entry.receiptFields.phone).filter(Boolean);
+  const existingReceiptQuery = [{ receipt_no: { $in: receiptNos } }];
+
+  if (phones.length > 0) {
+    existingReceiptQuery.push({ phone: { $in: phones } });
+  }
+
   const existingReceiptUsers = await StudentUser.find(
-    { receipt_no: { $in: receiptNos } },
-    { receipt_no: 1 }
+    { $or: existingReceiptQuery },
+    { receipt_no: 1, phone: 1 }
   ).lean();
   const existingReceiptSet = new Set(
     existingReceiptUsers.map((user) => user.receipt_no).filter(Boolean)
+  );
+  const existingPhoneSet = new Set(
+    existingReceiptUsers.map((user) => user.phone).filter(Boolean)
   );
   const readyEntries = [];
 
@@ -1267,6 +1340,16 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         rowNumber: entry.rowNumber,
         receipt_no: entry.receiptFields.receipt_no,
         error: buildReceiptAlreadyExistsMessage(),
+      });
+      return;
+    }
+
+    if (entry.receiptFields.phone && existingPhoneSet.has(entry.receiptFields.phone)) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        receipt_no: entry.receiptFields.receipt_no,
+        phone: entry.receiptFields.phone,
+        error: buildPhoneAlreadyExistsMessage(entry.receiptFields.phone),
       });
       return;
     }

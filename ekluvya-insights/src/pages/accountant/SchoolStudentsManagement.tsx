@@ -34,6 +34,23 @@ import {
   importTypeLabels,
 } from "@/components/accountant/school-students/utils";
 
+const getImportErrorMessage = (data: ImportResult | undefined, fallback: string) => {
+  const failedRows = data?.failedRows || [];
+
+  if (failedRows.length === 0) {
+    return data?.message || fallback;
+  }
+
+  const firstFailure = failedRows[0];
+  const rowLabel = firstFailure.rowNumber ? `Row ${firstFailure.rowNumber}` : "Import row";
+  const detail = firstFailure.error || data?.message || fallback;
+  const remainingCount = failedRows.length - 1;
+
+  return remainingCount > 0
+    ? `${rowLabel}: ${detail}. ${remainingCount} more row(s) failed.`
+    : `${rowLabel}: ${detail}`;
+};
+
 const SchoolStudentsManagement = () => {
   const [importType, setImportType] = useState<ImportType>("school-students");
   const [file, setFile] = useState<File | null>(null);
@@ -63,7 +80,15 @@ const SchoolStudentsManagement = () => {
   const failedRows = result?.failedRows || [];
   const assignedCount = result?.subscriptionAssignment?.assigned || 0;
   const pendingCount = Math.max(0, importedUsers.length - assignedCount);
+  const isBusy = isPreviewing || isImporting || isAssigningLater;
   const progressValue = isPreviewing ? 35 : isImporting ? 68 : isAssigningLater ? 82 : 100;
+  const importHasRequiredSubscriptionPlan =
+    assignSubscriptions && Boolean(adminToken.trim()) && Boolean(planId);
+  const canRunImport =
+    Boolean(file) &&
+    !isBusy &&
+    !dryRun &&
+    importHasRequiredSubscriptionPlan;
 
   const resetForNewFile = (nextFile: File | null) => {
     setFile(nextFile);
@@ -125,7 +150,12 @@ const SchoolStudentsManagement = () => {
       return;
     }
 
-    if (assignSubscriptions && (!adminToken.trim() || !planId)) {
+    if (!dryRun && !assignSubscriptions) {
+      toast.error("Select Assign Subscription and choose a subscription plan before import");
+      return;
+    }
+
+    if (!dryRun && !importHasRequiredSubscriptionPlan) {
       toast.error("Admin token and subscription plan are required");
       return;
     }
@@ -148,7 +178,7 @@ const SchoolStudentsManagement = () => {
     } catch (error: any) {
       const data = error.response?.data;
       setResult(data || null);
-      toast.error(data?.message || "Import failed");
+      toast.error(getImportErrorMessage(data, "Import failed"));
     } finally {
       setIsImporting(false);
     }
@@ -296,7 +326,6 @@ const SchoolStudentsManagement = () => {
     }
   };
 
-  const isBusy = isPreviewing || isImporting || isAssigningLater;
   const passwordValidationMessage = validatePasswordForm();
 
   return (
@@ -485,7 +514,7 @@ const SchoolStudentsManagement = () => {
                 <Button
                   type="button"
                   onClick={runImport}
-                  disabled={isBusy || !file}
+                  disabled={!canRunImport}
                   className="gap-2"
                 >
                   {isImporting ? (
