@@ -43,10 +43,11 @@ const ImportSummary = ({ result }: ImportSummaryProps) => {
     result.summary?.successfullyProcessed ??
     result.inserted ??
     0;
-  const failedCount = result.summary?.failedRecords ?? result.failed ?? 0;
+  const insertionFailedCount = result.summary?.failedRecords ?? result.failed ?? 0;
+  const subscriptionFailedCount = result.summary?.subscriptionFailedRecords ?? result.subscriptionAssignment?.failed ?? 0;
   const skippedCount = Math.max(
     0,
-    (result.totalRows || 0) - Number(successCount || 0) - Number(failedCount || 0)
+    (result.totalRows || 0) - Number(successCount || 0) - Number(insertionFailedCount || 0)
   );
   const duplicates = result.failedRows?.filter((row) =>
     row.error?.toLowerCase().includes("duplicate")
@@ -57,10 +58,10 @@ const ImportSummary = ({ result }: ImportSummaryProps) => {
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
       <SummaryCard label="Total Records" value={result.totalRows || 0} tone="blue" icon={Users} />
       <SummaryCard label="Success" value={successCount || 0} tone="green" icon={CheckCircle2} />
-      <SummaryCard label="Failed" value={failedCount || 0} tone="red" icon={AlertCircle} />
+      <SummaryCard label="Failed" value={insertionFailedCount} tone="red" icon={AlertCircle} />
       <SummaryCard label="Skipped" value={skippedCount} tone="orange" icon={Clock3} />
       <SummaryCard label="Duplicates" value={duplicates || 0} tone="orange" icon={CopyX} />
-      <SummaryCard label="Subscribed" value={assigned} tone="green" icon={CheckCircle2} />
+      <SummaryCard label={`Subscriptions (${assigned} success / ${subscriptionFailedCount} failed)`} value={assigned + subscriptionFailedCount} tone={subscriptionFailedCount > 0 ? "red" : "green"} icon={subscriptionFailedCount > 0 ? AlertCircle : CheckCircle2} />
     </div>
   );
 };

@@ -36,6 +36,23 @@ type ImportLogDetails = ImportLogListItem & {
   failed_rows?: any[];
 };
 
+const getInsertedCount = (item: ImportLogListItem) =>
+  Number(item.summary?.successfullyInserted ?? item.summary?.inserted ?? item.summary?.successfullyProcessed ?? 0);
+
+const getSubscriptionCounts = (item: ImportLogListItem) => {
+  const inserted = getInsertedCount(item);
+  const assignment = item.subscription_assignment || {};
+  const users = item.successful_users || [];
+  const hasRowStatuses = users.some((user) => user.subscription_status);
+  const assignedFromRows = users.filter((user) => String(user.subscription_status || "").toLowerCase() === "assigned").length;
+  const failedFromRows = users.filter((user) => String(user.subscription_status || "").toLowerCase() === "failed").length;
+  const assigned = Number(assignment.assigned ?? (hasRowStatuses ? assignedFromRows : 0));
+  const failed = Number(assignment.failed ?? (hasRowStatuses ? failedFromRows : 0));
+  const total = Number(assignment.total ?? (assigned + failed));
+
+  return { total: total > 0 ? total : inserted, assigned, failed };
+};
+
 const toImportType = (type?: string): ImportType =>
   type === "offline_receipt_users"
     ? "offline-receipts"
@@ -52,7 +69,10 @@ const toResult = (log: ImportLogDetails): ImportResult => ({
   failed: log.summary?.failedRecords || log.failed_rows?.length || 0,
   successfulUsers: log.successful_users || [],
   failedRows: log.failed_rows || [],
-  summary: log.summary || {},
+  summary: {
+    ...(log.summary || {}),
+    subscriptionFailedRecords: getSubscriptionCounts(log).failed,
+  },
   subscriptionAssignment: {
     status: log.subscription_assignment?.status || "skipped",
     assigned: log.subscription_assignment?.assigned || 0,
@@ -290,10 +310,14 @@ const ImportHistory = () => {
                         {item.import_type === "offline_receipt_users" ? "B2C" : "B2B"}
                       </Badge>
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                      <span>Total: {item.summary?.totalRecords || 0}</span>
-                      <span>Success: {item.summary?.successfullyInserted || item.summary?.successfullyProcessed || 0}</span>
-                      <span>Failed: {item.summary?.failedRecords || 0}</span>
+                    <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
+                      <span>Total: {item.summary?.totalRecords ?? 0}</span>
+                      <span>Inserted success: {getInsertedCount(item)}</span>
+                      <span>Inserted failed: {item.summary?.failedRecords ?? 0}</span>
+                      <span>Subscription success: {getSubscriptionCounts(item).assigned}</span>
+                      <span className={getSubscriptionCounts(item).failed > 0 ? "text-destructive" : undefined}>
+                        Subscription failed: {getSubscriptionCounts(item).failed}
+                      </span>
                     </div>
                   </button>
                 ))}
