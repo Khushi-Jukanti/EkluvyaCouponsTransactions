@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit, Building, IndianRupee } from "lucide-react";
+import { Search, Tag, RefreshCw, Users, XCircle, X, Check, Eye, Edit, Building, IndianRupee, ChevronsUpDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -234,6 +236,7 @@ const Index: React.FC = () => {
   const [amountFilter, setAmountFilter] = useState("");
   const [transactionUserType, setTransactionUserType] = useState<"b2c" | "b2b">("b2c");
   const [schoolCode, setSchoolCode] = useState("");
+  const [schoolFilterOpen, setSchoolFilterOpen] = useState(false);
   const [debouncedSchoolCode, setDebouncedSchoolCode] = useState("");
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [schoolsLoading, setSchoolsLoading] = useState(false);
@@ -1782,36 +1785,68 @@ const Index: React.FC = () => {
                 {transactionUserType === "b2b" && (
                   <div className="flex w-full max-w-lg items-center gap-2">
                     <Building className="h-4 w-4 text-muted-foreground" />
-                    <Select
-                      value={schoolCode || SCHOOL_FILTER_ALL}
-                      onValueChange={(value) => {
-                        setB2bTransactionsLoading(true);
-                        setSchoolCode(value === SCHOOL_FILTER_ALL ? "" : value);
-                        setPage(1);
-                      }}
-                      disabled={schoolsLoading}
-                    >
-                      <SelectTrigger className="h-11">
-                        <SelectValue placeholder={schoolsLoading ? "Loading schools..." : "Filter by school"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-w-[min(520px,calc(100vw-2rem))]">
-                        <SelectItem value={SCHOOL_FILTER_ALL}>All schools</SelectItem>
-                        {schoolOptions.map((school) => (
-                          <SelectItem
-                            key={getSchoolOptionValue(school)}
-                            value={getSchoolOptionValue(school)}
-                            className="border-b border-border/40 py-3 last:border-b-0"
-                          >
-                            {getSchoolOptionLabel(school)}
-                          </SelectItem>
-                        ))}
-                        {!schoolsLoading && schoolOptions.length === 0 && (
-                          <SelectItem value="__no_schools__" disabled>
-                            No schools found
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={schoolFilterOpen} onOpenChange={setSchoolFilterOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={schoolFilterOpen}
+                          aria-label="Filter by school"
+                          disabled={schoolsLoading}
+                          className="h-11 min-w-0 w-full justify-between font-normal"
+                        >
+                          <span className="truncate">
+                            {schoolsLoading ? "Loading schools..." : schoolCode
+                              ? getSchoolOptionLabel(schoolOptions.find((school) => getSchoolOptionValue(school) === schoolCode) || { school_code: schoolCode, school_name: "", school_address: "" })
+                              : "All schools"}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-[520px] max-w-[calc(100vw-2rem)] p-0">
+                        <Command filter={(value, search, keywords) =>
+                          [value, ...(keywords || [])].join(" ").toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0
+                        }>
+                          <CommandInput placeholder="Search code, name or address..." aria-label="Search schools by code, name or address" />
+                          <CommandList>
+                            <CommandEmpty>No schools found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem value={SCHOOL_FILTER_ALL} keywords={["All schools"]} onSelect={() => {
+                                if (schoolCode) {
+                                  setB2bTransactionsLoading(true);
+                                  setSchoolCode("");
+                                  setPage(1);
+                                }
+                                setSchoolFilterOpen(false);
+                              }}>
+                                <Check className={`mr-2 h-4 w-4 shrink-0 ${!schoolCode ? "opacity-100" : "opacity-0"}`} />
+                                All schools
+                              </CommandItem>
+                              {schoolOptions.map((school) => (
+                                <CommandItem
+                                  key={getSchoolOptionValue(school)}
+                                  value={getSchoolOptionValue(school)}
+                                  keywords={[school.school_code, school.school_name, school.school_address]}
+                                  className="border-b border-border/40 py-3 last:border-b-0"
+                                  onSelect={() => {
+                                    const value = getSchoolOptionValue(school);
+                                    if (value !== schoolCode) {
+                                      setB2bTransactionsLoading(true);
+                                      setSchoolCode(value);
+                                      setPage(1);
+                                    }
+                                    setSchoolFilterOpen(false);
+                                  }}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 shrink-0 ${schoolCode === getSchoolOptionValue(school) ? "opacity-100" : "opacity-0"}`} />
+                                  <span className="break-words">{getSchoolOptionLabel(school)}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 )}
               </div>

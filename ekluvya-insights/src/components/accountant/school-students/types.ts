@@ -62,6 +62,7 @@ export type ImportResult = {
     inserted?: number;
     updated?: number;
     failedRecords?: number;
+    subscriptionFailedRecords?: number;
     subscriptionAssignmentStatus?: string;
   };
   subscriptionAssignment?: {

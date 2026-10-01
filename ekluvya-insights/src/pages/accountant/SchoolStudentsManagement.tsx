@@ -11,6 +11,7 @@ import SubscriptionPanel from "@/components/accountant/school-students/Subscript
 import UploadSection from "@/components/accountant/school-students/UploadSection";
 import UserManagementTable from "@/components/accountant/school-students/UserManagementTable";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -65,6 +66,7 @@ const SchoolStudentsManagement = () => {
   const [isAssigningLater, setIsAssigningLater] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     adminToken: "",
     studentId: "",
@@ -274,6 +276,7 @@ const SchoolStudentsManagement = () => {
 
   const openPasswordDialog = () => {
     resetPasswordForm();
+    setShowPasswords(false);
     setPasswordDialogOpen(true);
   };
 
@@ -399,7 +402,7 @@ const SchoolStudentsManagement = () => {
                     <Label htmlFor="new-password">Password</Label>
                     <Input
                       id="new-password"
-                      type="password"
+                      type={showPasswords ? "text" : "password"}
                       value={passwordForm.password}
                       onChange={(event) =>
                         setPasswordForm((current) => ({
@@ -416,7 +419,7 @@ const SchoolStudentsManagement = () => {
                     <Label htmlFor="confirm-password">Confirm Password</Label>
                     <Input
                       id="confirm-password"
-                      type="password"
+                      type={showPasswords ? "text" : "password"}
                       value={passwordForm.confirmPassword}
                       onChange={(event) =>
                         setPasswordForm((current) => ({
@@ -428,6 +431,18 @@ const SchoolStudentsManagement = () => {
                       autoComplete="new-password"
                     />
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-passwords"
+                    className="inline-flex h-4 w-4 items-center justify-center !rounded-none p-0 [&_svg]:h-3 [&_svg]:w-3"
+                    checked={showPasswords}
+                    onCheckedChange={(checked) => setShowPasswords(checked === true)}
+                  />
+                  <Label htmlFor="show-passwords" className="cursor-pointer">
+                    Show passwords
+                  </Label>
                 </div>
 
                 {passwordValidationMessage && (
