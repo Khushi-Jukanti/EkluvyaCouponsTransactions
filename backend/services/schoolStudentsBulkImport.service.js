@@ -298,10 +298,10 @@ function buildBaseUser(row) {
 
 function buildSrReceiptUser(row) {
   const receiptNo = normalizeReceiptNo(
-    getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
+    getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number", "RECEIPT NO (OR) ADMISSION NO"])
   );
   const firstName = normalizeValue(
-    getRowValue(row, ["first_name", "First Name", "firstname", "student_name"])
+    getRowValue(row, ["first_name", "First Name", "firstname", "student_name", "NAME"])
   );
   const schoolName = normalizeValue(
     getRowValue(row, ["school_name", "School Name", "school name", "schoolName"])
@@ -330,7 +330,7 @@ function buildSrReceiptUser(row) {
       admission_number: null,
       user_type: "b2b",
       first_name: firstName,
-      last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname"])),
+      last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname", "SURNAME"])),
       email: buildEmail(row),
       phone: buildPhone(row),
       school_code: normalizeValue(getRowValue(row, ["school_code", "School Code"])),
@@ -345,6 +345,7 @@ function buildSrReceiptUser(row) {
           "School Address",
           "school address",
           "schoolAddress",
+          "SCHOOL LOCATION",
         ])
       ),
       branch: normalizeValue(getRowValue(row, ["branch", "Branch"])),
@@ -393,7 +394,7 @@ function buildSrReceiptUser(row) {
 
 function buildOfflineReceiptFields(row) {
   const receiptNo = normalizeReceiptNo(
-    getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
+    getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number", "RECEIPT NO (OR) ADMISSION NO"])
   );
   const executiveName = normalizeValue(
     getRowValue(row, ["executive_name", "Executive Name"])
@@ -414,6 +415,7 @@ function buildOfflineReceiptFields(row) {
       "School Address",
       "school address",
       "schoolAddress",
+      "SCHOOL LOCATION",
     ])
   );
   const subscriberName = normalizeValue(
@@ -421,10 +423,10 @@ function buildOfflineReceiptFields(row) {
   );
   const firstName =
     normalizeValue(
-      getRowValue(row, ["first_name", "First Name", "firstname", "student_name"])
+      getRowValue(row, ["first_name", "First Name", "firstname", "student_name", "NAME"])
     ) || subscriberName?.split(" ")[0];
   const lastName =
-    normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname"])) ||
+    normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname", "SURNAME"])) ||
     (subscriberName?.split(" ").length > 1
       ? subscriberName.split(" ").slice(1).join(" ")
       : null);
@@ -982,7 +984,7 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
       });
     } catch (err) {
       const receiptNo = normalizeReceiptNo(
-        getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
+        getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number", "RECEIPT NO (OR) ADMISSION NO"])
       );
 
       failedRows.push({
@@ -1292,7 +1294,7 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
         rowNumber,
         receipt_no:
           normalizeReceiptNo(
-            getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number"])
+            getRowValue(row, ["receipt_no", "Receipt No", "Receipt Number", "RECEIPT NO (OR) ADMISSION NO"])
           ) || "UNKNOWN",
         error: err.message,
       });
