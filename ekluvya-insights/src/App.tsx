@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import ValidateData from "./pages/ValidateData";
 import ChangePassword from "./pages/ChangePassword";
 import AgentDashboard from "./pages/AgentDashboard";
 import NotFound from "./pages/NotFound";
@@ -39,6 +40,7 @@ const App = () => (
         <Routes>
           {/* Auth */}
           <Route path="/" element={<Login />} />
+          <Route path="/validate" element={<ValidateData />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route
             path="/change-password"

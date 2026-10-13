@@ -15,6 +15,7 @@ const {
 } = require("../controllers/schoolStudents.controller");
 
 const router = express.Router();
+const { validateSrReceiptSheet } = require("../services/schoolStudentsBulkImport.service");
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -53,6 +54,20 @@ const normalizeUploadedFile = (req, res, next) => {
 
   next();
 };
+
+// Public validation only: client options can never enable insertion or subscriptions.
+router.post("/validate-sr-receipts", (req, res) => {
+  upload.single("file")(req, res, async (uploadError) => {
+    if (uploadError) return res.status(400).json({ message: uploadError.message });
+    if (!req.file?.buffer) return res.status(400).json({ message: "Please upload a sheet." });
+    try {
+      return res.json(await validateSrReceiptSheet(req.file.buffer));
+    } catch (error) {
+      console.error("SR sheet validation failed:", error.message);
+      return res.status(400).json({ message: "Unable to validate this file. Check that it is a readable Excel/CSV file with 1–5,000 student rows on the first sheet, then try again." });
+    }
+  });
+});
 
 router.get("/schools", verifyToken, getSchools);
 

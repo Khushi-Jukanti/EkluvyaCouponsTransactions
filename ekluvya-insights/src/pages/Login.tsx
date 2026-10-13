@@ -216,6 +216,9 @@ const Login = () => {
 
                 {/* FOOTER */}
                 <div className="mt-8 pt-5 border-t border-border">
+                    <Button type="button" variant="outline" className="mb-3 w-full" onClick={() => navigate("/validate")}>
+                        Validate your data
+                    </Button>
                     <p className="text-center text-xs text-muted-foreground">
                         © {new Date().getFullYear()} Ekluvya • Secure Access
                     </p>

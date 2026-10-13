@@ -1163,7 +1163,7 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
       readyToInsert: newEntries.length,
       inserted: 0,
       failed: failedRows.length,
-      preview: newEntries.slice(0, 20).map((entry) => ({
+      preview: newEntries.slice(0, options.fullPreview ? undefined : 20).map((entry) => ({
         rowNumber: entry.rowNumber,
         username: entry.user.username,
         receipt_no: entry.user.receipt_no,
@@ -1588,7 +1588,36 @@ async function importOfflineReceiptUsersFromExcel(buffer, options = {}) {
   };
 }
 
+async function validateSrReceiptSheet(buffer) {
+  const rows = readWorkbookRows(buffer);
+  if (!rows.length) throw new Error("The first sheet is empty. Add headers and student rows.");
+  if (rows.length > 5000) throw new Error("Please upload at most 5,000 students per file.");
+  const result = await importSrReceiptUsersFromExcel(buffer, {
+    dryRun: true,
+    assignSubscriptions: false,
+    fullPreview: true,
+  });
+  const errors = new Map(result.failedRows.map((row) => [row.rowNumber, row.error]));
+  return {
+    ...result,
+    report: rows.map((row, index) => {
+      const original = { ...row };
+      // Remove report metadata when a previously downloaded sheet is revalidated.
+      delete original["Validation Row"];
+      delete original["Validation Status"];
+      delete original["Validation Error"];
+      return errors.size > 0 ? {
+        ...original,
+        "Validation Row": index + 2,
+        "Validation Status": errors.has(index + 2) ? "Needs correction" : "Valid",
+        "Validation Error": errors.get(index + 2) || "",
+      } : original;
+    }),
+  };
+}
+
 module.exports = {
+  validateSrReceiptSheet,
   importSchoolStudentsFromExcel,
   importSrReceiptUsersFromExcel,
   importOfflineReceiptUsersFromExcel,
