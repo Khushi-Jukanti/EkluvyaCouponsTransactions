@@ -11,7 +11,7 @@ const options = [
   {
     value: "school-students" as ImportType,
     title: "Import School Students",
-    description: "B2B users with school code, admission number, username and password.",
+    description: "B2B users with admission number, optional school code, username and password.",
     icon: FileSpreadsheet,
   },
   {

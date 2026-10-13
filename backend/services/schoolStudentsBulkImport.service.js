@@ -2,6 +2,7 @@ const XLSX = require("xlsx");
 const bcrypt = require("bcryptjs");
 const fs = require("fs");
 const path = require("path");
+const { randomInt } = require("crypto");
 const StudentUser = require("../models/student-user.model");
 const { assignSubscriptionsToUsers } = require("./subscriptionAssignment.service");
 const { saveImportLogToDatabase } = require("./schoolStudentsImportHistory.service");
@@ -206,26 +207,36 @@ function buildEmail(row, username) {
   );
 }
 
-function buildBaseUser(row) {
-  const schoolCode = normalizeValue(getRowValue(row, ["school_code", "School Code"]));
-  const admissionNumber = normalizeValue(
+function buildAdmissionNumber(row) {
+  return normalizeValue(
     getRowValue(row, [
       "admission_number",
       "Admission Number",
       "admission no",
       "admission_no",
       "Admission No",
+      "RECEIPT NO (OR) ADMISSION NO",
     ])
   );
+}
+
+function generateSchoolStudentUsername(firstName) {
+  const prefix = firstName.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3).padEnd(3, "X");
+  return `${prefix}${randomInt(10000, 100000)}`;
+}
+
+function buildBaseUser(row) {
+  const schoolCode = normalizeValue(getRowValue(row, ["school_code", "School Code"]));
+  const admissionNumber = buildAdmissionNumber(row);
   const firstName = normalizeValue(
     getRowValue(row, ["first_name", "First Name", "firstname", "name", "Name"])
   );
 
-  if (!schoolCode) throw new Error("school_code missing");
   if (!admissionNumber) throw new Error("admission_number missing");
   if (!firstName) throw new Error("first_name missing");
 
-  const username = `${schoolCode}-${admissionNumber}`;
+  const username = generateSchoolStudentUsername(firstName);
   const tempPassword = generateRandomPassword();
 
   return {
@@ -236,7 +247,7 @@ function buildBaseUser(row) {
       admission_number: admissionNumber,
       user_type: "b2b",
       first_name: firstName,
-      last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname"])),
+      last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname", "SURNAME", "Second Name"])),
       email: buildEmail(row),
       phone: buildPhone(row),
       school_code: schoolCode,
@@ -252,8 +263,11 @@ function buildBaseUser(row) {
           "School Address",
           "school address",
           "schoolAddress",
+          "SCHOOL LOCATION",
         ])
       ),
+      executive_name: normalizeValue(getRowValue(row, ["executive_name", "Executive Name"])),
+      executive_phone: normalizePhone(getRowValue(row, ["executive_phone", "Executive Phone"])),
       branch: normalizeValue(getRowValue(row, ["branch", "Branch"])),
       class: normalizeValue(getRowValue(row, ["class", "Class", "grade", "Grade"])),
       section: normalizeValue(getRowValue(row, ["section", "Section"])),
@@ -651,6 +665,7 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
   const failedRows = [];
   const validEntries = [];
   const seenUsernames = new Set();
+  const seenAdmissions = new Set();
   const seenEmails = new Set();
   const seenPhones = new Set();
 
@@ -659,9 +674,18 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
 
     try {
       const entry = buildBaseUser(row);
+      const admissionKey = JSON.stringify([entry.user.school_code, entry.user.admission_number]);
+
+      if (seenAdmissions.has(admissionKey)) {
+        throw new Error(`duplicate admission number in sheet: ${entry.user.admission_number}`);
+      }
+
+      for (let attempt = 0; seenUsernames.has(entry.user.username) && attempt < 100; attempt += 1) {
+        entry.username = entry.user.username = generateSchoolStudentUsername(entry.user.first_name);
+      }
 
       if (seenUsernames.has(entry.user.username)) {
-        throw new Error(`duplicate username in sheet: ${entry.user.username}`);
+        throw new Error("Could not generate an available username; retry the import");
       }
 
       if (entry.user.email && seenEmails.has(entry.user.email)) {
@@ -673,6 +697,7 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
       }
 
       seenUsernames.add(entry.user.username);
+      seenAdmissions.add(admissionKey);
       if (entry.user.email) {
         seenEmails.add(entry.user.email);
       }
@@ -686,10 +711,7 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
     } catch (err) {
       failedRows.push({
         rowNumber,
-        username:
-          normalizeValue(
-            getRowValue(row, ["admission_number", "Admission Number", "admission no"])
-          ) || "UNKNOWN",
+        username: buildAdmissionNumber(row) || "UNKNOWN",
         error: err.message,
       });
     }
@@ -712,7 +734,13 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
   const usernames = validEntries.map((entry) => entry.user.username);
   const emails = validEntries.map((entry) => entry.user.email).filter(Boolean);
   const phones = validEntries.map((entry) => entry.user.phone).filter(Boolean);
-  const existingUserQuery = [{ username: { $in: usernames } }];
+  const existingUserQuery = [
+    { username: { $in: usernames } },
+    ...validEntries.map(({ user }) => ({
+      school_code: user.school_code,
+      admission_number: user.admission_number,
+    })),
+  ];
 
   if (emails.length > 0) {
     existingUserQuery.push({ email: { $in: emails } });
@@ -724,15 +752,46 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
 
   const existingUsers = await StudentUser.find(
     { $or: existingUserQuery },
-    { username: 1, email: 1, phone: 1 }
+    { username: 1, email: 1, phone: 1, school_code: 1, admission_number: 1 }
   ).lean();
 
   const existingUsernameSet = new Set(existingUsers.map((user) => user.username).filter(Boolean));
+  const existingAdmissionSet = new Set(existingUsers
+    .filter((user) => user.admission_number)
+    .map((user) => JSON.stringify([user.school_code || null, user.admission_number])));
+
+  // Retry generated collisions in batches, checking every replacement against the database.
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const collisions = validEntries.filter((entry) => existingUsernameSet.has(entry.user.username));
+    if (collisions.length === 0) break;
+    for (const entry of collisions) {
+      let candidate = generateSchoolStudentUsername(entry.user.first_name);
+      for (let retry = 0; seenUsernames.has(candidate) && retry < 100; retry += 1) {
+        candidate = generateSchoolStudentUsername(entry.user.first_name);
+      }
+      if (seenUsernames.has(candidate)) continue;
+      seenUsernames.add(candidate);
+      entry.username = entry.user.username = candidate;
+    }
+    const matches = await StudentUser.find(
+      { username: { $in: collisions.map((entry) => entry.user.username) } },
+      { username: 1 }
+    ).lean();
+    matches.forEach((user) => existingUsernameSet.add(user.username));
+  }
   const existingEmailSet = new Set(existingUsers.map((user) => user.email).filter(Boolean));
   const existingPhoneSet = new Set(existingUsers.map((user) => user.phone).filter(Boolean));
   const newEntries = [];
 
   validEntries.forEach((entry) => {
+    if (existingAdmissionSet.has(JSON.stringify([entry.user.school_code, entry.user.admission_number]))) {
+      failedRows.push({
+        rowNumber: entry.rowNumber,
+        username: entry.user.username,
+        error: "admission number already exists for this school in database",
+      });
+      return;
+    }
     if (existingUsernameSet.has(entry.user.username)) {
       failedRows.push({
         rowNumber: entry.rowNumber,
@@ -778,6 +837,8 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
         username: entry.user.username,
         user_type: entry.user.user_type,
         admission_number: entry.user.admission_number,
+        executive_name: entry.user.executive_name,
+        executive_phone: entry.user.executive_phone,
         first_name: entry.user.first_name,
         last_name: entry.user.last_name,
         email: entry.user.email,
@@ -840,6 +901,8 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
           ? user.username.slice(user.school_code.length + 1)
           : null),
       password: plainPassword,
+      executive_name: user.executive_name,
+      executive_phone: user.executive_phone,
       school_code: user.school_code,
       school_type: user.school_type,
       school_name: user.school_name,

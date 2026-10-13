@@ -496,15 +496,8 @@ const SchoolStudentsManagement = () => {
                 onPreview={runPreview}
               />
 
-              {importType !== "school-students" && (
-                <p className="text-sm text-muted-foreground">
-                  Alternative headers accepted: RECEIPT NO (OR) ADMISSION NO (receipt_no),
-                  NAME (first_name), SURNAME (last_name), and SCHOOL LOCATION (school_address).
-                  Existing headers are still supported.
-                </p>
-              )}
-
               <ImportOptions
+                importType={importType}
                 dryRun={dryRun}
                 assignSubscriptions={assignSubscriptions}
                 onDryRunChange={setDryRun}
