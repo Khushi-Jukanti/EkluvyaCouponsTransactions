@@ -4,6 +4,22 @@ function restoreAdmissionNumbers(log) {
   if (log.import_type !== "school_students") return log;
 
   const normalize = (value) => String(value ?? "").trim();
+  const textKey = (value) => normalize(value).toLowerCase().replace(/\s+/g, " ");
+  const dateKey = (value) => {
+    const text = normalize(value);
+    if (!text) return "";
+    const parts = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (parts) return `${parts[3]}-${parts[2].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? text : date.toISOString().slice(0, 10);
+  };
+  const studentKey = (user) => {
+    if (!normalize(user.first_name) || !normalize(user.school_name) || !normalize(user.class) || !normalize(user.dob)) return null;
+    return JSON.stringify([
+      ...["first_name", "last_name", "school_name", "class"].map((key) => textKey(user[key])),
+      dateKey(user.dob),
+    ]);
+  };
   const identifier = (key, value) => {
     const text = normalize(value);
     if (key === "phone") return text.replace(/\.0+$/, "").replace(/\D/g, "");
@@ -19,6 +35,11 @@ function restoreAdmissionNumbers(log) {
       username: get("username"),
       phone: get("phone", "mobile", "mobileno", "phonenumber", "mobilenumber"),
       email: get("email", "emailid"),
+      first_name: get("firstname", "name"),
+      last_name: get("lastname", "surname", "secondname"),
+      school_name: get("schoolname"),
+      class: get("class"),
+      dob: get("dob", "dateofbirth"),
     };
   });
 
@@ -27,11 +48,17 @@ function restoreAdmissionNumbers(log) {
     successful_users: (log.successful_users || []).map((user) => {
       if (normalize(user.admission_number)) return user;
       // Match identifiers, never array positions: failed rows can shift the order.
-      const matches = sourceRows.filter((row) =>
+      let matches = sourceRows.filter((row) =>
         ["username", "phone", "email"].some((key) =>
           identifier(key, row[key]) && identifier(key, row[key]) === identifier(key, user[key])
         )
       );
+      // Older imports generated usernames and allowed blank phone/email fields.
+      // Only recover a unique student match; never guess between duplicate rows.
+      if (matches.length === 0) {
+        const key = studentKey(user);
+        if (key) matches = sourceRows.filter((row) => studentKey(row) === key);
+      }
       return matches.length === 1 && matches[0].admission
         ? { ...user, admission_number: matches[0].admission }
         : user;
