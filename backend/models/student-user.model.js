@@ -51,6 +51,11 @@ const Users = new Schema(
       default: null,
       trim: true,
     },
+    admission_number: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     branch: {
       type: String,
       default: null,

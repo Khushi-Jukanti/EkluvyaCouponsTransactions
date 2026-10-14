@@ -1,5 +1,44 @@
 const SchoolStudentImportLog = require("../models/school-student-import-log.model");
 
+function restoreAdmissionNumbers(log) {
+  if (log.import_type !== "school_students") return log;
+
+  const normalize = (value) => String(value ?? "").trim();
+  const identifier = (key, value) => {
+    const text = normalize(value);
+    if (key === "phone") return text.replace(/\.0+$/, "").replace(/\D/g, "");
+    return key === "email" ? text.toLowerCase() : text;
+  };
+  const sourceRows = (log.source_rows || []).map((row) => {
+    const fields = Object.fromEntries(Object.entries(row).map(([key, value]) => [
+      key.trim().toLowerCase().replace(/[\s_.-]+/g, ""), normalize(value),
+    ]));
+    const get = (...keys) => keys.map((key) => fields[key]).find(Boolean) || "";
+    return {
+      admission: get("admissionnumber", "admissionno", "receiptno(or)admissionno"),
+      username: get("username"),
+      phone: get("phone", "mobile", "mobileno", "phonenumber", "mobilenumber"),
+      email: get("email", "emailid"),
+    };
+  });
+
+  return {
+    ...log,
+    successful_users: (log.successful_users || []).map((user) => {
+      if (normalize(user.admission_number)) return user;
+      // Match identifiers, never array positions: failed rows can shift the order.
+      const matches = sourceRows.filter((row) =>
+        ["username", "phone", "email"].some((key) =>
+          identifier(key, row[key]) && identifier(key, row[key]) === identifier(key, user[key])
+        )
+      );
+      return matches.length === 1 && matches[0].admission
+        ? { ...user, admission_number: matches[0].admission }
+        : user;
+    }),
+  };
+}
+
 async function saveImportLogToDatabase(payload) {
   return SchoolStudentImportLog.findOneAndUpdate(
     { import_id: payload.importId },
@@ -78,9 +117,10 @@ async function listImportLogs({ page = 1, limit = 20, importType, from, to } = {
 }
 
 async function getImportLog(importId) {
-  const log = await SchoolStudentImportLog.findOne({ import_id: importId }).lean();
+  const storedLog = await SchoolStudentImportLog.findOne({ import_id: importId }).lean();
 
-  if (!log) return null;
+  if (!storedLog) return null;
+  const log = restoreAdmissionNumbers(storedLog);
 
   const statusByUserId = new Map();
 
