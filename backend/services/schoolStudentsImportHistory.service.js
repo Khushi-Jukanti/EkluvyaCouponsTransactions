@@ -1,4 +1,5 @@
 const SchoolStudentImportLog = require("../models/school-student-import-log.model");
+const { restoreInitialPassword } = require("./dataEntryCredentials.service");
 
 function restoreAdmissionNumbers(log) {
   if (log.import_type !== "school_students") return log;
@@ -89,10 +90,11 @@ async function saveImportLogToDatabase(payload) {
   ).lean();
 }
 
-async function listImportLogs({ page = 1, limit = 20, importType, from, to } = {}) {
-  const safePage = Math.max(Number(page) || 1, 1);
+async function listImportLogs({ page = 1, limit = 20, importType, from, to, requestedById } = {}) {
+  const safePage = Math.min(Math.max(Math.floor(Number(page)) || 1, 1), 100000);
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const query = {};
+  if (requestedById) query["requested_by.id"] = String(requestedById);
 
   if (importType) {
     query.import_type = importType;
@@ -123,7 +125,9 @@ async function listImportLogs({ page = 1, limit = 20, importType, from, to } = {
   const [items, total] = await Promise.all([
     SchoolStudentImportLog.find(query)
       .select(
-        "import_id import_type source_file_name summary successful_users subscription_assignment log_file_name created_at updated_at"
+        requestedById
+          ? "import_id import_type source_file_name summary successful_users.user_id successful_users.subscription_status successful_users.subscription_assigned_at insertion_status validated_at inserted_at created_at updated_at"
+          : "import_id import_type source_file_name summary successful_users subscription_assignment log_file_name created_at updated_at requested_by insertion_status review_locked"
       )
       .sort({ created_at: -1 })
       .skip((safePage - 1) * safeLimit)
@@ -143,17 +147,27 @@ async function listImportLogs({ page = 1, limit = 20, importType, from, to } = {
   };
 }
 
-async function getImportLog(importId) {
-  const storedLog = await SchoolStudentImportLog.findOne({ import_id: importId }).lean();
+function batchStatus(batch) {
+  if (!batch.success) return "Failed";
+  // Aggregate failure counts cannot identify which individual students succeeded.
+  if (Number(batch.response?.failed || 0) > 0) return "Needs verification";
+  return "Assigned";
+}
+
+async function getImportLog(importId, requestedById) {
+  const query = { import_id: importId };
+  if (requestedById) query["requested_by.id"] = String(requestedById);
+  const storedLog = await SchoolStudentImportLog.findOne(query).lean();
 
   if (!storedLog) return null;
   const log = restoreAdmissionNumbers(storedLog);
+  log.successful_users = (log.successful_users || []).map(restoreInitialPassword);
 
   const statusByUserId = new Map();
 
   (log.subscription_assignment?.batches || []).forEach((batch) => {
     (batch.userIds || []).forEach((userId) => {
-      statusByUserId.set(String(userId), batch.success ? "Assigned" : "Failed");
+      statusByUserId.set(String(userId), batchStatus(batch));
     });
   });
 
@@ -164,7 +178,7 @@ async function getImportLog(importId) {
     successful_users: (log.successful_users || []).map((user) => ({
       ...user,
       subscription_status:
-        statusByUserId.get(String(user.user_id)) ||
+        (user.subscription_reviewed_at ? user.subscription_status : statusByUserId.get(String(user.user_id))) ||
         user.subscription_status ||
         "Pending",
     })),
@@ -182,7 +196,7 @@ async function updateImportLogSubscription(importId, subscriptionAssignment) {
 
   (subscriptionAssignment?.batches || []).forEach((batch) => {
     (batch.userIds || []).forEach((userId) => {
-      statusByUserId.set(userId, batch.success ? "Assigned" : "Failed");
+      statusByUserId.set(String(userId), batchStatus(batch));
     });
   });
 
@@ -190,7 +204,8 @@ async function updateImportLogSubscription(importId, subscriptionAssignment) {
     ...user,
     subscription_status:
       statusByUserId.get(String(user.user_id)) ||
-      (subscriptionAssignment?.assigned > 0 ? "Assigned" : user.subscription_status || "Pending"),
+      user.subscription_status || "Pending",
+    subscription_assigned_at: statusByUserId.get(String(user.user_id)) === "Assigned" ? new Date() : user.subscription_assigned_at || null,
   }));
 
   return SchoolStudentImportLog.findOneAndUpdate(

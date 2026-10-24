@@ -46,6 +46,11 @@ const SchoolStudentImportLogSchema = new Schema(
       type: Schema.Types.Mixed,
       default: null,
     },
+    validated_at: Date,
+    inserted_at: Date,
+    insertion_status: String,
+    review_locked: Boolean,
+    review_attempts: [Schema.Types.Mixed],
     summary: {
       type: Schema.Types.Mixed,
       default: {},
@@ -84,6 +89,7 @@ const SchoolStudentImportLogSchema = new Schema(
 );
 
 SchoolStudentImportLogSchema.index({ created_at: -1 });
+SchoolStudentImportLogSchema.index({ "requested_by.id": 1, created_at: -1 });
 SchoolStudentImportLogSchema.index({ import_type: 1, created_at: -1 });
 
 module.exports = importLogConnection.model(

@@ -22,6 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/school-students', schoolStudentsRoutes);
+app.use('/api/data-entry', require('./routes/data-entry.routes'));
 
 const AgentCouponService = require('./services/agentCoupon.service');
 

@@ -6,6 +6,8 @@ const { randomInt } = require("crypto");
 const StudentUser = require("../models/student-user.model");
 const { assignSubscriptionsToUsers } = require("./subscriptionAssignment.service");
 const { saveImportLogToDatabase } = require("./schoolStudentsImportHistory.service");
+const { encryptInitialPassword } = require("./dataEntryCredentials.service");
+const { resumeTrackedImport, insertTrackedUsers } = require("./dataEntryImport.service");
 
 const HASH_CONCURRENCY = 25;
 const IMPORT_LOG_DIR = path.join(__dirname, "..", "data", "import-logs");
@@ -15,7 +17,7 @@ function generateRandomPassword() {
   let password = "";
 
   for (let index = 0; index < 6; index += 1) {
-    password += letters[Math.floor(Math.random() * letters.length)];
+    password += letters[randomInt(letters.length)];
   }
 
   return password;
@@ -1000,10 +1002,17 @@ async function importSchoolStudentsFromExcel(buffer, options = {}) {
 }
 
 async function importSrReceiptUsersFromExcel(buffer, options = {}) {
+  if (options.trackedImport) {
+    const resumed = await resumeTrackedImport(StudentUser, options);
+    if (resumed) return resumed;
+  }
   const dryRun = options.dryRun === true;
   const assignSubscriptions = options.assignSubscriptions === true;
   const importId = createImportId().replace("school-students", "sr-receipts");
   const rows = readWorkbookRows(buffer);
+  if ((options.atomicImport || options.trackedImport) && (!rows.length || rows.length > 5000)) {
+    throw new Error("Upload 1–5,000 student rows");
+  }
   const failedRows = [];
   const validEntries = [];
   const seenUsernames = new Set();
@@ -1016,6 +1025,8 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
 
     try {
       const entry = buildSrReceiptUser(row);
+      const schemaError = new StudentUser(entry.user).validateSync();
+      if (schemaError) throw new Error(schemaError.message);
 
       if (seenReceipts.has(entry.user.receipt_no)) {
         throw new Error(`duplicate receipt_no in sheet: ${entry.user.receipt_no}`);
@@ -1200,6 +1211,14 @@ async function importSrReceiptUsersFromExcel(buffer, options = {}) {
       failedRows,
       message: "No new SR receipt users to insert; all rows already exist or failed validation",
     };
+  }
+
+  if (options.atomicImport || options.trackedImport) {
+    if (failedRows.length || newEntries.length !== rows.length) {
+      return { success: false, totalRows: rows.length, inserted: 0, failed: failedRows.length, failedRows, message: "Some rows failed validation. Correct errors or remove existing-user rows and submit those separately to the admin office, then validate again." };
+    }
+    if (options.trackedImport) return insertTrackedUsers(StudentUser, await hashUsersInBatches(newEntries), rows, options);
+    return insertDataEntryUsers(newEntries, rows, options);
   }
 
   const entriesWithHashedPasswords = await hashUsersInBatches(newEntries);
@@ -1614,6 +1633,38 @@ async function validateSrReceiptSheet(buffer) {
       } : original;
     }),
   };
+}
+
+// Commit students and their history together on the same MongoDB connection.
+// Transactions deliberately fail closed if the database does not support them.
+async function insertDataEntryUsers(entries, sourceRows, options) {
+  const hashed = await hashUsersInBatches(entries);
+  const session = await StudentUser.db.startSession();
+  const now = new Date();
+  let inserted = 0;
+  try {
+    await session.withTransaction(async () => {
+      const users = await StudentUser.insertMany(hashed.map((entry) => ({ ...entry.user, temp_password: null })), { session, ordered: true });
+      const successfulUsers = users.map((user, index) => ({
+        ...Object.fromEntries(["first_name", "last_name", "email", "phone", "username", "user_type", "receipt_no", "admission_number", "school_code", "school_type", "school_name", "school_address", "branch", "executive_name", "executive_phone", "class", "section", "preparing_for", "dob", "gender"].map((key) => [key, user[key] ?? null])),
+        user_id: String(user._id), encrypted_initial_password: encryptInitialPassword(hashed[index].tempPassword),
+        rowNumber: entries[index].rowNumber, import_status: "Inserted", subscription_status: "Pending",
+        inserted_at: now,
+      }));
+      // _id is deterministic so simultaneous retries cannot commit duplicate batches.
+      await StudentUser.db.collection("school_student_import_logs").insertOne({
+        _id: new StudentUser.db.base.Types.ObjectId(options.importId.replace("data-entry-", "")), import_id: options.importId, import_type: "sr_receipt_users",
+        source_file_name: options.sourceFileName, dry_run: false, requested_by: options.requestedBy,
+        validated_at: options.validatedAt, inserted_at: now, insertion_status: "Inserted",
+        summary: { totalRecords: sourceRows.length, successfullyInserted: users.length, failedRecords: 0, subscriptionAssignmentStatus: "skipped" },
+        source_rows: sourceRows, successful_users: successfulUsers, failed_rows: [],
+        subscription_assignment: { status: "skipped", assigned: 0, failed: 0, batches: [], message: "Awaiting accountant subscription assignment" },
+        created_at: now, updated_at: now,
+      }, { session });
+      inserted = users.length;
+    });
+  } finally { await session.endSession(); }
+  return { success: true, importId: options.importId, inserted, totalRows: sourceRows.length, failed: 0, failedRows: [], message: "Inserted successfully. Subscriptions will activate within 24 hours." };
 }
 
 module.exports = {

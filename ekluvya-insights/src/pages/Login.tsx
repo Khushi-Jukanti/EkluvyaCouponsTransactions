@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import axios from "axios";
 
 const Login = () => {
     const navigate = useNavigate();
@@ -39,11 +40,17 @@ const Login = () => {
         const role = localStorage.getItem("role");
 
         if (token && role) {
+            if (role === "data_entry") {
+                navigate("/validate", { replace: true });
+                return;
+            }
             // If already logged in, redirect to appropriate dashboard
-            if (role === "admin") {
+            if (role === "admin" || role === "accountant") {
                 navigate("/admin/dashboard", { replace: true });
-            } else {
+                return;
+            } else if (role === "agent") {
                 navigate("/agent/dashboard", { replace: true });
+                return;
             }
         }
 
@@ -64,6 +71,22 @@ const Login = () => {
         try {
             const cleanedInput = usernameOrMobile.trim();
 
+            // All roles share this screen; operators authenticate against AGENT_DB_URI.users.
+            try {
+                const { data } = await api.post("/data-entry/login", { identifier: cleanedInput, password });
+                localStorage.setItem("token", data.token);
+                localStorage.setItem("role", data.role);
+                localStorage.setItem("userName", data.user?.name || "");
+                toast.success(`Welcome back, ${data.user?.name || ""}!`);
+                navigate("/validate", { replace: true });
+                return;
+            } catch (error) {
+                if (!axios.isAxiosError(error) || ![400, 401].includes(error.response?.status || 0)) {
+                    throw new Error("Unable to sign in right now. Please try again.");
+                }
+                // Not an operator login: continue with the existing staff/agent flow.
+            }
+
             // Check if input looks like email
             const isEmail = cleanedInput.includes('@');
 
@@ -78,7 +101,6 @@ const Login = () => {
                     };
 
                     const { data: agentData } = await api.post("/auth/agent/login", agentPayload);
-                    console.log("Agent login successful:", agentData);
 
                     localStorage.setItem("token", agentData.token);
                     localStorage.setItem("role", agentData.role);
@@ -104,7 +126,6 @@ const Login = () => {
                 };
 
                 const { data: adminData } = await api.post("/auth/admin/login", adminPayload);
-                console.log("Admin/Accountant login successful:", adminData);
 
                 // Store user data
                 localStorage.setItem("token", adminData.token);
@@ -216,8 +237,8 @@ const Login = () => {
 
                 {/* FOOTER */}
                 <div className="mt-8 pt-5 border-t border-border">
-                    <Button type="button" variant="outline" className="mb-3 w-full" onClick={() => navigate("/validate")}>
-                        Validate your data
+                    <Button type="button" variant="outline" className="mb-3 w-full" onClick={() => navigate("/data-entry/register")}>
+                        New data-entry operator? Register
                     </Button>
                     <p className="text-center text-xs text-muted-foreground">
                         © {new Date().getFullYear()} Ekluvya • Secure Access

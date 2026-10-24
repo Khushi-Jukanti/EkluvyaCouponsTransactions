@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart3,
   GraduationCap,
+  UserCheck,
   History,
   LogOut,
   Menu,
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 
 const accountantNavItems = [
+  { label: "Verify Students", to: "/admin/dashboard/student-verification", icon: UserCheck },
   {
     label: "Subscription Management",
     to: "/admin/dashboard/subscription-management",

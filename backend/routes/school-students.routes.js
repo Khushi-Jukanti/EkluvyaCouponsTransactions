@@ -15,6 +15,14 @@ const {
 } = require("../controllers/schoolStudents.controller");
 
 const router = express.Router();
+router.post("/review-assign", verifyToken, requireRole("accountant"), async (req, res) => {
+  try {
+    const { approveStudents } = require("../services/studentReview.service");
+    res.json(await approveStudents({ ...req.body, reviewer: req.user }));
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.status ? error.message : "Assignment could not be confirmed. Refresh and verify the students before retrying." });
+  }
+});
 const { validateSrReceiptSheet } = require("../services/schoolStudentsBulkImport.service");
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -55,8 +63,8 @@ const normalizeUploadedFile = (req, res, next) => {
   next();
 };
 
-// Public validation only: client options can never enable insertion or subscriptions.
-router.post("/validate-sr-receipts", (req, res) => {
+// Data-entry validation uses its own authenticated, audited endpoint.
+router.post("/validate-sr-receipts", verifyToken, requireRole("accountant"), (req, res) => {
   upload.single("file")(req, res, async (uploadError) => {
     if (uploadError) return res.status(400).json({ message: uploadError.message });
     if (!req.file?.buffer) return res.status(400).json({ message: "Please upload a sheet." });
