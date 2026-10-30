@@ -9,6 +9,8 @@ const { saveImportLogToDatabase } = require("./schoolStudentsImportHistory.servi
 const { encryptInitialPassword } = require("./dataEntryCredentials.service");
 const { resumeTrackedImport, insertTrackedUsers } = require("./dataEntryImport.service");
 
+const { normalizeIndianMobile } = require("../utils/indianMobile");
+
 const HASH_CONCURRENCY = 25;
 const IMPORT_LOG_DIR = path.join(__dirname, "..", "data", "import-logs");
 
@@ -90,7 +92,7 @@ function parseDOB(rawDob) {
     return null;
   }
 
-  if (rawDob instanceof Date) {
+  if (Object.prototype.toString.call(rawDob) === "[object Date]") {
     if (isNaN(rawDob.getTime())) {
       throw new Error(`Invalid DOB value: ${rawDob}`);
     }
@@ -334,6 +336,19 @@ function buildSrReceiptUser(row) {
   if (!firstName) throw new Error("first_name missing");
   if (!executiveName) throw new Error("executive_name missing");
 
+  const schoolLocation = normalizeValue(getRowValue(row, ["school_address", "School Address", "schoolAddress", "SCHOOL LOCATION", "school_location"]));
+  if (!schoolLocation) throw new Error("School location is required.");
+  const rawMobile = getRowValue(row, ["phone", "mobile", "mobile_no", "mobileNo", "mobile_number", "Mobile No", "Mobile No.", "Phone Number", "phone_number"]);
+  if (!normalizeValue(rawMobile)) throw new Error("Mobile Number is required.");
+  const mobile = normalizeIndianMobile(rawMobile);
+  if (!mobile) throw new Error("Enter a valid Indian Mobile Number: 10 digits starting with 6–9, optionally prefixed with +91.");
+  const rawDOB = getRowValue(row, ["dob", "date_of_birth", "Date of Birth", "Date of Birth(DOB)"]);
+  if (!normalizeValue(rawDOB)) throw new Error("Date of Birth (DOB) is required.");
+  const dob = parseDOB(rawDOB);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  if (!dob || !Number.isFinite(dob.getTime()) || dob > today) throw new Error("Date of Birth (DOB) must be a valid date that is not in the future.");
+
   const username = receiptNo;
   const tempPassword = generateRandomPassword();
 
@@ -348,22 +363,13 @@ function buildSrReceiptUser(row) {
       first_name: firstName,
       last_name: normalizeValue(getRowValue(row, ["last_name", "Last Name", "lastname", "SURNAME"])),
       email: buildEmail(row),
-      phone: buildPhone(row),
+      phone: mobile,
       school_code: normalizeValue(getRowValue(row, ["school_code", "School Code"])),
       school_name: schoolName,
       school_type: normalizeSchoolType(
         getRowValue(row, ["school_type", "School Type", "school type", "schoolType"])
       ),
-      school_address: normalizeValue(
-        getRowValue(row, [
-          "school_address",
-          "school_Address",
-          "School Address",
-          "school address",
-          "schoolAddress",
-          "SCHOOL LOCATION",
-        ])
-      ),
+      school_address: schoolLocation,
       branch: normalizeValue(getRowValue(row, ["branch", "Branch"])),
       class: normalizeValue(getRowValue(row, ["class", "Class", "grade", "Grade"])),
       section: normalizeValue(getRowValue(row, ["section", "Section"])),
@@ -373,7 +379,7 @@ function buildSrReceiptUser(row) {
       executive_name: executiveName,
       executive_phone: executivePhone,
       must_change_password: 0,
-      dob: parseDOB(getRowValue(row, ["dob", "DOB", "date_of_birth", "Date of Birth"])),
+      dob,
       gender: mapGender(getRowValue(row, ["gender", "Gender"])),
       profile_picture: "",
       roles_user: [],

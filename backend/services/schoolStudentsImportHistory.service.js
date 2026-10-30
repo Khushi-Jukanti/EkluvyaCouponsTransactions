@@ -1,6 +1,26 @@
 const SchoolStudentImportLog = require("../models/school-student-import-log.model");
 const { restoreInitialPassword } = require("./dataEntryCredentials.service");
 
+// Older import snapshots omitted the operator's zonal name.
+async function includeValidatorDetails(logs) {
+  const needsDetails = log => (log.requested_by?.role === "data_entry" || log.import_id?.startsWith("data-entry-")) &&
+    /^[a-f\d]{24}$/i.test(String(log.requested_by?.id || "")) &&
+    ["name", "phone", "zonal_name"].some(key => !log.requested_by?.[key]);
+  const ids = [...new Set(logs.filter(needsDetails).map(log => String(log.requested_by.id)))];
+  if (!ids.length) return logs;
+  const Operator = require("../models/data-entry-user.model");
+  const operators = await Operator.find({ _id: { $in: ids }, role: "data_entry" }).select("name phone zonal_name").lean();
+  const byId = new Map(operators.map(operator => [String(operator._id), operator]));
+  return logs.map(log => {
+    const operator = needsDetails(log) && byId.get(String(log.requested_by.id));
+    if (!operator) return log;
+    return { ...log, requested_by: {
+      ...log.requested_by,
+      ...Object.fromEntries(["name", "phone", "zonal_name"].map(key => [key, log.requested_by[key] || operator[key] || null])),
+    } };
+  });
+}
+
 function restoreAdmissionNumbers(log) {
   if (log.import_type !== "school_students") return log;
 
@@ -137,7 +157,7 @@ async function listImportLogs({ page = 1, limit = 20, importType, from, to, requ
   ]);
 
   return {
-    items,
+    items: requestedById ? items : await includeValidatorDetails(items),
     pagination: {
       page: safePage,
       limit: safeLimit,
@@ -160,7 +180,8 @@ async function getImportLog(importId, requestedById) {
   const storedLog = await SchoolStudentImportLog.findOne(query).lean();
 
   if (!storedLog) return null;
-  const log = restoreAdmissionNumbers(storedLog);
+  const [enrichedLog] = requestedById ? [storedLog] : await includeValidatorDetails([storedLog]);
+  const log = restoreAdmissionNumbers(enrichedLog);
   log.successful_users = (log.successful_users || []).map(restoreInitialPassword);
 
   const statusByUserId = new Map();

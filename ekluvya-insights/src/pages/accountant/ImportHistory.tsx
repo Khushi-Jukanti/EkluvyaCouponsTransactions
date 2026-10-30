@@ -22,6 +22,7 @@ type ImportLogListItem = {
   import_id: string;
   import_type: "school_students" | "offline_receipt_users" | "sr_receipt_users";
   source_file_name?: string | null;
+  requested_by?: { id?: string; role?: string; name?: string | null; phone?: string | null; zonal_name?: string | null };
   summary?: Record<string, any>;
   subscription_assignment?: Record<string, any>;
   successful_users?: any[];
@@ -310,6 +311,12 @@ const ImportHistory = () => {
                         {item.import_type === "offline_receipt_users" ? "B2C" : "B2B"}
                       </Badge>
                     </div>
+                    {(item.requested_by?.role === "data_entry" || item.import_id.startsWith("data-entry-")) && <div className="mt-3 space-y-1 break-words text-xs">
+                      <p className="font-medium">Validated by</p>
+                      <p>Name: {item.requested_by?.name || "Not recorded"}</p>
+                      <p>Phone Number: {item.requested_by?.phone || "Not recorded"}</p>
+                      <p>Zonal Name: {item.requested_by?.zonal_name || "Not recorded"}</p>
+                    </div>}
                     <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
                       <span>Total: {item.summary?.totalRecords ?? 0}</span>
                       <span>Inserted success: {getInsertedCount(item)}</span>
@@ -364,6 +371,13 @@ const ImportHistory = () => {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {(details.requested_by?.role === "data_entry" || details.import_id.startsWith("data-entry-")) && <Card className="glass-card">
+                    <CardHeader><CardTitle className="text-lg">Validated by</CardTitle></CardHeader>
+                    <CardContent><dl className="grid gap-4 break-words sm:grid-cols-3">
+                      {[["Name", details.requested_by?.name], ["Phone Number", details.requested_by?.phone], ["Zonal Name", details.requested_by?.zonal_name]].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-sm font-medium">{value || "Not recorded"}</dd></div>)}
+                    </dl></CardContent>
+                  </Card>}
 
                   <ImportSummary result={selectedResult} />
 

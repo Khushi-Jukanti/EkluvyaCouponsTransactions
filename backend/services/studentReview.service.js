@@ -20,23 +20,48 @@ async function approveStudents({ importId, userIds, adminToken, planId, reviewer
     const update = async fields => Log.updateOne({ import_id: importId }, { $set: Object.fromEntries(Object.entries(fields).map(([key, value]) => [`successful_users.$[student].${key}`, value])) }, { arrayFilters: [{ "student.user_id": { $in: userIds } }] });
     await update({ subscription_status: "Processing", subscription_reviewed_at: now, approved_by: actor, approved_at: now, subscription_plan_id: planId.trim() });
     started = true;
+    let failureReason = null;
     let status = "Needs verification";
     let message = "The result could not be confirmed. Verify these subscriptions before trying again.";
     try {
-      const { data } = await axios.post(process.env.SUBSCRIPTION_ENDPOINT, { user_ids: userIds, plan_id: planId.trim() }, { headers: { Authorization: `Bearer ${adminToken.trim()}` }, timeout: 60000 });
+      const { data, status: httpStatus } = await axios.post(process.env.SUBSCRIPTION_ENDPOINT, { user_ids: userIds, plan_id: planId.trim() }, { headers: { Authorization: `Bearer ${adminToken.trim()}` }, timeout: 60000 });
       const response = data?.response || data || {};
       if (data?.success === false || response.success === false) { status = "Failed"; message = "The subscription service rejected the assignment."; }
-      else if (Number(response.failed || 0) === 0 && (data?.success === true || response.success === true || response.failed === 0 || Number(response.assigned) === userIds.length)) { status = "Assigned"; message = `Subscription assigned to ${userIds.length} students.`; }
-      else { message = "The service reported partial failures. Verify the selected students individually before retrying."; }
+      else if (Number(response.failed || 0) === 0 && (response.assigned == null || Number(response.assigned) === userIds.length) && (data?.success === true || response.success === true || response.failed === 0 || Number(response.assigned) === userIds.length || [200, 201, 204].includes(httpStatus))) { status = "Assigned"; message = `Subscription assigned to ${userIds.length} students.`; }
+      else { failureReason = "partial_or_unconfirmed_response"; message = "The subscription service did not confirm assignment for every selected student. Verify their subscriptions before retrying."; }
     } catch (error) {
-      if ([400, 401, 403, 422].includes(error.response?.status)) { status = "Failed"; message = "Assignment rejected. Check your admin token and selected plan."; }
+      const httpStatus = error.response?.status;
+      // Log only the upstream message, never request headers or the Axios error object.
+      const upstreamMessage = error.response?.data?.message;
+      const safeMessage = typeof upstreamMessage === "string"
+        ? upstreamMessage.split(adminToken.trim()).join("[REDACTED]")
+          .replace(/Bearer\s+[^\s"',;]+/gi, "Bearer [REDACTED]")
+          .replace(/[\r\n]/g, " ").slice(0, 500)
+        : "No upstream error message provided";
+      console.error("Subscription assignment service failed", {
+        importId,
+        httpStatus: httpStatus || null,
+        code: error.code || null,
+        message: safeMessage,
+      });
+      failureReason = httpStatus ? `subscription_service_http_${httpStatus}` : error.code || "subscription_service_connection_error";
+      if ([400, 401, 403, 422].includes(httpStatus)) {
+        status = "Failed";
+        message = httpStatus === 401 || httpStatus === 403
+          ? "The subscription service rejected the admin token. Fetch plans with a valid subscription admin token and try again."
+          : "The subscription service rejected the student IDs or selected plan. Check the selected plan and student records.";
+      } else if (["ECONNABORTED", "ETIMEDOUT"].includes(error.code)) {
+        message = "The subscription service timed out. Assignment is unconfirmed; check the students’ subscriptions before retrying.";
+      } else {
+        message = `The subscription service ${httpStatus ? `returned HTTP ${httpStatus}` : "could not be reached"}. Assignment is unconfirmed; check the students’ subscriptions before retrying.`;
+      }
     }
-    await update({ subscription_status: status, subscription_assigned_at: status === "Assigned" ? new Date() : null });
+    await update({ subscription_status: status, subscription_assigned_at: status === "Assigned" ? new Date() : null, subscription_assignment_message: message, subscription_assignment_error: failureReason });
     const statuses = students.map(user => userIds.includes(String(user.user_id)) ? status : user.subscription_status || "Pending");
     const assigned = statuses.filter(value => value === "Assigned").length;
     const failed = statuses.filter(value => value === "Failed").length;
     await Log.updateOne({ import_id: importId }, {
-      $push: { review_attempts: { user_ids: userIds, plan_id: planId.trim(), reviewer: actor, at: now, status } },
+      $push: { review_attempts: { user_ids: userIds, plan_id: planId.trim(), reviewer: actor, at: now, status, reason: failureReason } },
       $set: { review_locked: false, "subscription_assignment.assigned": assigned, "subscription_assignment.failed": failed,
         "subscription_assignment.status": assigned === students.length ? "completed" : "partial",
         "summary.subscriptionAssignmentStatus": assigned === students.length ? "completed" : "partial" },

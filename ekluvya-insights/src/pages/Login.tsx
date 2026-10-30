@@ -84,7 +84,7 @@ const Login = () => {
                 if (!axios.isAxiosError(error) || ![400, 401].includes(error.response?.status || 0)) {
                     throw new Error("Unable to sign in right now. Please try again.");
                 }
-                // Not an operator login: continue with the existing staff/agent flow.
+                // Credentials may belong to another role; try the remaining login endpoints.
             }
 
             // Check if input looks like email
@@ -148,11 +148,14 @@ const Login = () => {
                 return;
             } catch (adminError) {
                 console.log("Admin/Accountant login failed:", adminError.response?.data?.message || adminError.message);
-                throw new Error(adminError.response?.data?.message || "Login failed. Please check your credentials.");
+                if (axios.isAxiosError(adminError) && [400, 401, 403].includes(adminError.response?.status || 0)) {
+                    throw new Error("Invalid email/mobile or password. Data-entry operators must use the account created through operator registration.");
+                }
+                throw new Error("Unable to sign in right now. Please try again.");
             }
 
         } catch (err) {
-            alert(err.message || "Login failed. Please check your credentials.");
+            toast.error(err instanceof Error ? err.message : "Login failed. Please check your credentials.");
         } finally {
             setLoading(false);
         }

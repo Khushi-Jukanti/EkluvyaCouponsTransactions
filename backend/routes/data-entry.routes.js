@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const { createHash } = require("crypto");
+const { normalizeIndianMobile } = require("../utils/indianMobile");
 const Operator = require("../models/data-entry-user.model");
 const Validation = require("../models/data-entry-validation.model");
 const verifyToken = require("../middleware/auth");
@@ -14,15 +15,16 @@ router.use((req, res, next) => { res.set("Cache-Control", "no-store"); next(); }
 const clean = (value) => typeof value === "string" ? value.trim() : "";
 const phoneNumber = (value) => clean(value).replace(/[\s()+-]/g, "");
 const hash = (buffer) => createHash("sha256").update(buffer).digest("hex");
-const profile = (user) => ({ id: String(user._id), name: user.name, email: user.email, phone: user.phone, school_name: user.school_name, location: user.location, role: "data_entry" });
+const profile = (user) => ({ id: String(user._id), name: user.name, email: user.email, phone: user.phone, zonal_name: user.zonal_name, school_name: user.school_name, location: user.location, role: "data_entry" });
 
 router.post("/register", async (req, res) => {
   try {
     const name = clean(req.body.name), email = clean(req.body.email).toLowerCase();
-    const phone = phoneNumber(req.body.phone), school_name = clean(req.body.school_name), location = clean(req.body.location);
+    const phone = normalizeIndianMobile(req.body.phone), school_name = clean(req.body.school_name), location = clean(req.body.location);
+    const zonal_name = clean(req.body.zonal_name);
     const password = typeof req.body.password === "string" ? req.body.password : "";
-    if (!name || name.length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || !/^\d{10,15}$/.test(phone) || !school_name || school_name.length > 200 || !location || location.length > 300 || password.length < 8 || Buffer.byteLength(password) > 72) {
-      return res.status(400).json({ message: "Enter all details, a valid email and phone (10–15 digits), and a password of at least 8 characters (maximum 72 bytes)." });
+    if (!zonal_name || zonal_name.length > 150 || !name || name.length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || !phone || !school_name || school_name.length > 200 || !location || location.length > 300 || password.length < 8 || Buffer.byteLength(password) > 72) {
+      return res.status(400).json({ message: "Enter all details, a valid email and Indian mobile number (10 digits starting with 6–9), and a password of at least 8 characters (maximum 72 bytes)." });
     }
     // Check all existing users, regardless of role. Never convert an existing account.
     const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -30,7 +32,7 @@ router.post("/register", async (req, res) => {
       return res.status(409).json({ message: "An account with this email or phone already exists. Please sign in or contact the admin office." });
     }
     await Operator.init(); // Unique indexes also protect simultaneous registrations.
-    await Operator.create({ name, email, phone, school_name, location, password: await bcrypt.hash(password, 12), role: "data_entry" });
+    await Operator.create({ name, email, phone, school_name, location, zonal_name, password: await bcrypt.hash(password, 12), role: "data_entry" });
     return res.status(201).json({ success: true, message: "Registration successful. Please sign in." });
   } catch (error) {
     return res.status(error.code === 11000 ? 409 : 500).json({ message: error.code === 11000 ? "An account with this email or phone already exists." : "Registration could not finish. Please contact the admin office." });
@@ -42,8 +44,23 @@ router.post("/login", async (req, res) => {
     const identifier = clean(req.body.identifier);
     const password = typeof req.body.password === "string" ? req.body.password : "";
     if (!identifier || !password || Buffer.byteLength(password) > 72) return res.status(400).json({ message: "Enter your email or phone and password." });
-    const user = await Operator.findOne({ role: "data_entry", ...(identifier.includes("@") ? { email: identifier.toLowerCase() } : { phone: phoneNumber(identifier) }) }).select("+password");
-    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid email/phone or password." });
+    const user = await Operator.findOne({ role: "data_entry", ...(identifier.includes("@") ? { email: identifier.toLowerCase() } : { phone: normalizeIndianMobile(identifier) || phoneNumber(identifier) }) }).select("+password");
+    if (!user) {
+      console.warn("Data-entry login rejected", {
+        reason: "operator_not_found",
+        database: Operator.db.name,
+        collection: Operator.collection.name,
+      });
+      return res.status(401).json({ message: "Invalid email/phone or password." });
+    }
+    if (typeof user.password !== "string" || !(await bcrypt.compare(password, user.password))) {
+      console.warn("Data-entry login rejected", {
+        reason: "password_mismatch",
+        database: Operator.db.name,
+        collection: Operator.collection.name,
+      });
+      return res.status(401).json({ message: "Invalid email/phone or password." });
+    }
     const userProfile = profile(user);
     const token = jwt.sign({ ...userProfile, account_source: "data_entry_users" }, process.env.JWT_SECRET, { expiresIn: "12h" });
     return res.json({ success: true, token, role: "data_entry", user: userProfile });
@@ -82,7 +99,7 @@ router.post("/insert", upload, async (req, res) => {
     const importId = `data-entry-${validation._id}`;
     const previous = await getImportLog(importId, req.operator.id);
     if (previous && (!previous.insertion_status || previous.insertion_status === "Inserted")) return res.json({ success: true, importId, inserted: previous.successful_users.length, message: "Inserted successfully. Subscriptions will activate within 24 hours." });
-    const result = await importSrReceiptUsersFromExcel(req.file.buffer, { trackedImport: true, importId, requestedBy: req.operator, validatedAt: validation.createdAt, sourceFileName: req.file.originalname, assignSubscriptions: false });
+    const result = await importSrReceiptUsersFromExcel(req.file.buffer, { trackedImport: true, importId, requestedBy: { ...req.operator, ...validation.operator }, validatedAt: validation.createdAt, sourceFileName: req.file.originalname, assignSubscriptions: false });
     return res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
     console.error("Data-entry insertion failed", { name: error.name, code: error.code, codeName: error.codeName, validationId: clean(req.body.validationId) });

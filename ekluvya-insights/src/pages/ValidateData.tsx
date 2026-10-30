@@ -55,7 +55,20 @@ export default function ValidateData() {
       const { data } = await api.post<ValidationResult>("/data-entry/validate", body, {
         headers: { "Content-Type": "multipart/form-data" }, timeout: 180000,
       });
-      setResult(data);
+      const formatDuplicateError = (message: string) => message.replace(
+        /receipt no already exists in database/g,
+        "receipt no/Admission Number already exists in database",
+      );
+      setResult({
+        ...data,
+        failedRows: data.failedRows.map(row => ({ ...row, error: formatDuplicateError(row.error) })),
+        report: data.report.map(row => ({
+          ...row,
+          ...(typeof row["Validation Error"] === "string"
+            ? { "Validation Error": formatDuplicateError(row["Validation Error"]) }
+            : {}),
+        })),
+      });
       toast.success("Validation complete. Review the results below.");
     } catch (err: unknown) {
       const response = err as { response?: { data?: { message?: string } } };
@@ -90,8 +103,8 @@ export default function ValidateData() {
           <CardContent className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
             <ol className="list-decimal space-y-2 pl-5 text-sm">
               <li>Use the column headers below or download the template. Put headers in row 1 and one student per row on the first worksheet. Remove blank rows.</li>
-              <li>Fill in receipt/admission number, NAME, SCHOOL NAME, and EXECUTIVE NAME. These are required for the SR import. Other listed fields are optional.</li>
-              <li>Use DD/MM/YYYY for DOB, for example 15/08/2012. Store receipt numbers and phone numbers as text to preserve leading zeros. Do not repeat receipt numbers, email addresses, or phone numbers.</li>
+              <li>Fill in receipt/admission number, NAME, DOB, PHONE, SCHOOL NAME, SCHOOL LOCATION, and EXECUTIVE NAME. These are required for the SR import. Other listed fields are optional.</li>
+              <li>Use a valid DOB in DD/MM/YYYY format, for example 15/08/2012; future dates are not allowed. Mobile numbers must have 10 digits starting with 6–9, optionally prefixed with +91. Store receipt numbers and phone numbers as text to preserve leading zeros. Do not repeat receipt numbers, email addresses, or phone numbers.</li>
               <li>Upload an .xlsx, .xls, or .csv file (up to 15 MB and 5,000 students), then click Validate sheet. Checks use the same SR import rules and database duplicate checks as School Management.</li>
               <li>Correct invalid fields and remove duplicate rows. If a user already exists in the database, remove that row and submit those details separately to the admin office.</li>
               <li>Every row must pass before insertion. We check again when you insert. After insertion, download usernames and initial passwords from your import history.</li>

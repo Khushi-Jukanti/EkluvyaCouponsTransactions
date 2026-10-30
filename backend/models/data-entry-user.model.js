@@ -7,6 +7,7 @@ const schema = new mongoose.Schema({
   email: { type: String, required: true, lowercase: true, trim: true },
   phone: { type: String, required: true },
   school_name: { type: String, required: true, trim: true },
+  zonal_name: { type: String, trim: true, maxlength: 150 },
   location: { type: String, required: true, trim: true },
   password: { type: String, required: true, select: false },
   role: { type: String, enum: ["data_entry"], default: "data_entry" },

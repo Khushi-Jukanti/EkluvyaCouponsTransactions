@@ -22,7 +22,8 @@ function routes(overrides = {}) {
   const state = { created: null, query: null, options: null, existing: null, log: null };
   const operator = { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", name: "Operator", email: "operator@example.com", phone: "9876543210", role: "data_entry" };
   const Operator = {
-    collection: { findOne: async query => { state.query = query; return state.existing; } },
+    db: { name: "test" },
+    collection: { name: "users", findOne: async query => { state.query = query; return state.existing; } },
     init: async () => {}, create: async value => { state.created = value; },
     findOne: query => { state.query = query; return { select: async () => operator, then: resolve => Promise.resolve(operator).then(resolve) }; },
     ...overrides.Operator,
@@ -43,7 +44,7 @@ function routes(overrides = {}) {
   return { state, call, operator };
 }
 
-const registration = { name: "Staff", email: "STAFF@example.com", phone: "9876543210", school_name: "School", location: "Hyderabad", password: "StrongPass123" };
+const registration = { name: "Staff", email: "STAFF@example.com", phone: "9876543210", school_name: "School", location: "Hyderabad", zonal_name: "Zonal Manager", password: "StrongPass123" };
 test("registration hashes passwords, normalizes email, and never accepts a privileged role", async () => {
   const { state, call } = routes();
   const result = await call("post", "/register", { body: { ...registration, role: "accountant" } });
@@ -71,6 +72,30 @@ test("login queries the data-entry role and rejects a wrong password", async () 
   assert.equal(result.code, 401);
   assert.equal(state.query.role, "data_entry");
   assert.equal(state.query.email, "operator@example.com");
+});
+test("login rejects an account missing from the users collection", async () => {
+  const { call } = routes({ Operator: { findOne: () => ({ select: async () => null }) } });
+  const result = await call("post", "/login", { body: { identifier: "missing@example.com", password: "SomePassword123" } });
+  assert.equal(result.code, 401);
+  assert.equal(result.body.message, "Invalid email/phone or password.");
+});
+test("a registered operator can sign in with their saved password", async () => {
+  const { state, call, operator } = routes();
+  const registered = await call("post", "/register", { body: registration });
+  assert.equal(registered.code, 201);
+  Object.assign(operator, state.created);
+  const secret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "operator-login-test-secret";
+  try {
+    const result = await call("post", "/login", { body: { identifier: registration.email, password: registration.password } });
+    assert.equal(result.code, 200);
+    assert.equal(result.body.role, "data_entry");
+    assert.equal(result.body.user.email, registration.email.toLowerCase());
+    assert.ok(result.body.token);
+  } finally {
+    if (secret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = secret;
+  }
 });
 test("history list and details always use authenticated ownership", async () => {
   const { state, call } = routes();
@@ -124,7 +149,7 @@ function importer({ existing = [], failHistory = false } = {}) {
   });
   return { state, service };
 }
-const sheet = Buffer.from("receipt_no,first_name,school_name,executive_name\nREC001,Student,School,Executive\n");
+const sheet = Buffer.from("receipt_no,first_name,school_name,executive_name,school_address,phone,dob\nREC001,Student,School,Executive,Hyderabad,9876543210,15/08/2012\n");
 const options = { atomicImport: true, importId: "data-entry-bbbbbbbbbbbbbbbbbbbbbbbb", requestedBy: { id: "operator" } };
 test("database duplicates stop the entire data-entry import", async () => {
   const { state, service } = importer({ existing: [{ receipt_no: "REC001" }] });
@@ -133,7 +158,7 @@ test("database duplicates stop the entire data-entry import", async () => {
 });
 test("one invalid row blocks insertion of otherwise valid students", async () => {
   const { state, service } = importer();
-  const mixedSheet = Buffer.concat([sheet, Buffer.from("REC002,,School,Executive\n")]);
+  const mixedSheet = Buffer.concat([sheet, Buffer.from("REC002,,School,Executive,Hyderabad,9876543211,15/08/2012\n")]);
   const result = await service.importSrReceiptUsersFromExcel(mixedSheet, options);
   assert.equal(result.success, false); assert.equal(result.failed, 1); assert.equal(state.students.length, 0);
 });
@@ -170,4 +195,74 @@ test("assigning a selected student preserves unselected pending statuses", async
   await service.updateImportLogSubscription("batch", { assigned: 1, status: "completed", batches: [{ success: true, userIds: ["one"], response: { failed: 0 } }] });
   assert.equal(update.$set.successful_users[0].subscription_status, "Assigned");
   assert.equal(update.$set.successful_users[1].subscription_status, "Pending");
+});
+
+test("operator registration rejects invalid Indian mobiles before creating an account", async () => {
+  for (const phone of ["1234567890", "98765", "+14155552671", "abc9876543210", "00919876543210"]) {
+    const { call, state } = routes();
+    assert.equal((await call("post", "/register", { body: { ...registration, phone } })).code, 400, phone);
+    assert.equal(state.created, null);
+  }
+});
+test("operator registration normalizes an Indian country prefix", async () => {
+  const { call, state } = routes();
+  assert.equal((await call("post", "/register", { body: { ...registration, phone: "+91 98765-43210" } })).code, 201);
+  assert.equal(state.created.phone, "9876543210");
+});
+test("student validation rejects missing locations, invalid DOBs and invalid mobiles", async () => {
+  const cases = [
+    { location: "", phone: "9876543210", dob: "15/08/2012", error: /School location is required/ },
+    { location: "Hyderabad", phone: "", dob: "15/08/2012", error: /Mobile Number is required/ },
+    { location: "Hyderabad", phone: "1234567890", dob: "15/08/2012", error: /valid Indian Mobile Number/ },
+    { location: "Hyderabad", phone: "abc9876543210", dob: "15/08/2012", error: /valid Indian Mobile Number/ },
+    { location: "Hyderabad", phone: "9876543210", dob: "", error: /DOB.*required/ },
+    { location: "Hyderabad", phone: "9876543210", dob: "31/02/2012", error: /Invalid DOB/ },
+    { location: "Hyderabad", phone: "9876543210", dob: "01/01/2999", error: /not in the future/ },
+  ];
+  for (const row of cases) {
+    const { service, state } = importer();
+    const buffer = Buffer.from(`receipt_no,first_name,school_name,executive_name,SCHOOL LOCATION,Mobile Number,Date of Birth(DOB)\nREC001,Student,School,Executive,${row.location},${row.phone},${row.dob}\n`);
+    const result = await service.validateSrReceiptSheet(buffer);
+    assert.equal(result.failed, 1);
+    assert.match(result.failedRows[0].error, row.error);
+    assert.equal(result.report[0]["Validation Status"], "Needs correction");
+    assert.match(result.report[0]["Validation Error"], row.error);
+    assert.equal(state.students.length, 0);
+  }
+});
+test("student validation accepts a real leap date and normalizes an Indian mobile", async () => {
+  const { service } = importer();
+  const buffer = Buffer.from("receipt_no,first_name,school_name,executive_name,SCHOOL LOCATION,Mobile Number,Date of Birth(DOB)\nREC001,Student,School,Executive,Hyderabad,+91 98765-43210,29/02/2012\n");
+  const result = await service.validateSrReceiptSheet(buffer);
+  assert.equal(result.failed, 0);
+  assert.equal(result.preview[0].phone, "9876543210");
+});
+
+test("accountant history fills missing validator details without replacing the saved name", async () => {
+  const operatorId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const stored = { import_id: `data-entry-${operatorId}`, requested_by: { id: operatorId, role: "data_entry", name: "Name at validation" }, successful_users: [] };
+  let selected;
+  const service = load("services/schoolStudentsImportHistory.service.js", {
+    "../models/school-student-import-log.model": { findOne: () => ({ lean: async () => stored }) },
+    "../models/data-entry-user.model": { find: query => {
+      assert.equal(query.role, "data_entry");
+      assert.equal(query._id.$in[0], operatorId);
+      return { select: fields => { selected = fields; return { lean: async () => [{ _id: operatorId, name: "Current name", phone: "9876543210", zonal_name: "Zonal Manager" }] }; } };
+    } },
+  });
+  const result = await service.getImportLog(stored.import_id);
+  assert.equal(result.requested_by.name, "Name at validation");
+  assert.equal(result.requested_by.phone, "9876543210");
+  assert.equal(result.requested_by.zonal_name, "Zonal Manager");
+  assert.equal(selected, "name phone zonal_name");
+  assert.equal(stored.requested_by.zonal_name, undefined);
+});
+test("complete validator snapshots do not require a live operator lookup", async () => {
+  const stored = { import_id: "data-entry-aaaaaaaaaaaaaaaaaaaaaaaa", requested_by: { id: "aaaaaaaaaaaaaaaaaaaaaaaa", role: "data_entry", name: "Validator", phone: "9876543210", zonal_name: "Zonal Manager" }, successful_users: [] };
+  const service = load("services/schoolStudentsImportHistory.service.js", {
+    "../models/school-student-import-log.model": { findOne: () => ({ lean: async () => stored }) },
+    "../models/data-entry-user.model": { find: () => { throw new Error("Unexpected lookup"); } },
+  });
+  const result = await service.getImportLog(stored.import_id);
+  assert.equal(result.requested_by.zonal_name, "Zonal Manager");
 });

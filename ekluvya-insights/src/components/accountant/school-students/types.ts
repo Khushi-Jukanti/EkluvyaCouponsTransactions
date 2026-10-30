@@ -27,6 +27,7 @@ export type ImportedUser = {
   section?: string | null;
   preparing_for?: string | null;
   subscription_status?: string | null;
+  subscription_assignment_message?: string | null;
   payment_status?: string | null;
   receipt_status?: string | null;
   import_status?: string | null;

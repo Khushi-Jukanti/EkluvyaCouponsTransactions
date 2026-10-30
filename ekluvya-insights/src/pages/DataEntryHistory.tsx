@@ -24,6 +24,12 @@ export default function DataEntryHistory() {
   const { importId } = useParams<{ importId: string }>();
   const selected = importId || "";
   const legacyImportId = params.get("importId");
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    const refreshHistory = () => setRefresh(value => value + 1);
+    window.addEventListener("focus", refreshHistory);
+    return () => window.removeEventListener("focus", refreshHistory);
+  }, []);
   const [items, setItems] = useState<ImportLog[]>([]);
   const [details, setDetails] = useState<ImportLog | null>(null);
   const [page, setPage] = useState(1);
@@ -45,16 +51,20 @@ export default function DataEntryHistory() {
       setItems(data.items); setTotalPages(data.pagination.totalPages);
     }).catch(err => { if (!axios.isCancel(err)) { setItems([]); setError(dataEntryError(err, "Unable to load history.")); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [page, from, to, selected, legacyImportId]);
+  }, [page, from, to, selected, legacyImportId, refresh]);
 
   useEffect(() => {
-    setSelectedStudent(null); setDetails(null); setStudentPage(1); setSearch(""); setDetailError("");
+    setDetailError("");
     if (!selected) { setDetailLoading(false); return; }
     const controller = new AbortController(); setDetailLoading(true);
     api.get(`/data-entry/history/${encodeURIComponent(selected)}`, { signal: controller.signal }).then(({ data }) => setDetails(data.log)).catch(err => {
       if (!axios.isCancel(err)) setDetailError(dataEntryError(err, "Unable to load import details."));
     }).finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
+  }, [selected, refresh]);
+
+  useEffect(() => {
+    setSelectedStudent(null); setDetails(null); setStudentPage(1); setSearch("");
   }, [selected]);
 
   const students = (details?.successful_users || []).filter(user => [user.first_name, user.last_name, user.username, user.phone, user.school_name, user.subscription_status].join(" ").toLowerCase().includes(search.toLowerCase()));
