@@ -215,7 +215,6 @@ test("student validation rejects missing locations, invalid DOBs and invalid mob
     { location: "Hyderabad", phone: "", dob: "15/08/2012", error: /Mobile Number is required/ },
     { location: "Hyderabad", phone: "1234567890", dob: "15/08/2012", error: /valid Indian Mobile Number/ },
     { location: "Hyderabad", phone: "abc9876543210", dob: "15/08/2012", error: /valid Indian Mobile Number/ },
-    { location: "Hyderabad", phone: "9876543210", dob: "", error: /DOB.*required/ },
     { location: "Hyderabad", phone: "9876543210", dob: "31/02/2012", error: /Invalid DOB/ },
     { location: "Hyderabad", phone: "9876543210", dob: "01/01/2999", error: /not in the future/ },
   ];
@@ -230,6 +229,24 @@ test("student validation rejects missing locations, invalid DOBs and invalid mob
     assert.equal(state.students.length, 0);
   }
 });
+test("all three sheet import types accept empty, whitespace and omitted DOBs", async () => {
+  for (const dob of ["", "   ", undefined]) {
+    const buffer = Buffer.from(`receipt_no,admission_number,first_name,school_name,executive_name,school_address,phone${dob === undefined ? "" : ",dob"}\nREC001,ADM001,Student,School,Executive,Hyderabad,9876543210${dob === undefined ? "" : `,${dob}`}\n`);
+    const { service, state } = importer();
+    for (const method of ["importSchoolStudentsFromExcel", "importSrReceiptUsersFromExcel", "importOfflineReceiptUsersFromExcel"]) {
+      const result = await service[method](buffer, { dryRun: true });
+      assert.equal(result.failed, 0, method);
+      assert.equal(result.preview.length, 1, method);
+      assert.equal(result.preview[0].dob, null, method);
+    }
+    const validation = await service.validateSrReceiptSheet(buffer);
+    assert.equal(validation.failed, 0);
+    const result = await service.importSrReceiptUsersFromExcel(buffer, options);
+    assert.equal(result.inserted, 1);
+    assert.equal(state.students[0].dob, null);
+  }
+});
+
 test("student validation accepts a real leap date and normalizes an Indian mobile", async () => {
   const { service } = importer();
   const buffer = Buffer.from("receipt_no,first_name,school_name,executive_name,SCHOOL LOCATION,Mobile Number,Date of Birth(DOB)\nREC001,Student,School,Executive,Hyderabad,+91 98765-43210,29/02/2012\n");

@@ -88,7 +88,7 @@ function getRowValue(row, possibleKeys) {
 }
 
 function parseDOB(rawDob) {
-  if (rawDob === undefined || rawDob === null || rawDob === "") {
+  if (normalizeValue(rawDob) === null) {
     return null;
   }
 
@@ -343,11 +343,10 @@ function buildSrReceiptUser(row) {
   const mobile = normalizeIndianMobile(rawMobile);
   if (!mobile) throw new Error("Enter a valid Indian Mobile Number: 10 digits starting with 6–9, optionally prefixed with +91.");
   const rawDOB = getRowValue(row, ["dob", "date_of_birth", "Date of Birth", "Date of Birth(DOB)"]);
-  if (!normalizeValue(rawDOB)) throw new Error("Date of Birth (DOB) is required.");
   const dob = parseDOB(rawDOB);
   const today = new Date();
   today.setHours(23, 59, 59, 999);
-  if (!dob || !Number.isFinite(dob.getTime()) || dob > today) throw new Error("Date of Birth (DOB) must be a valid date that is not in the future.");
+  if (dob && (!Number.isFinite(dob.getTime()) || dob > today)) throw new Error("Date of Birth (DOB) must be a valid date that is not in the future.");
 
   const username = receiptNo;
   const tempPassword = generateRandomPassword();

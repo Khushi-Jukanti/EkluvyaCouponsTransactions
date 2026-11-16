@@ -103,8 +103,8 @@ export default function ValidateData() {
           <CardContent className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
             <ol className="list-decimal space-y-2 pl-5 text-sm">
               <li>Use the column headers below or download the template. Put headers in row 1 and one student per row on the first worksheet. Remove blank rows.</li>
-              <li>Fill in receipt/admission number, NAME, DOB, PHONE, SCHOOL NAME, SCHOOL LOCATION, and EXECUTIVE NAME. These are required for the SR import. Other listed fields are optional.</li>
-              <li>Use a valid DOB in DD/MM/YYYY format, for example 15/08/2012; future dates are not allowed. Mobile numbers must have 10 digits starting with 6–9, optionally prefixed with +91. Store receipt numbers and phone numbers as text to preserve leading zeros. Do not repeat receipt numbers, email addresses, or phone numbers.</li>
+              <li>Fill in receipt/admission number, NAME, PHONE, SCHOOL NAME, SCHOOL LOCATION, and EXECUTIVE NAME. These are required for the SR import. DOB and other listed fields are optional.</li>
+              <li>If provided, use a valid DOB in DD/MM/YYYY format, for example 15/08/2012; future dates are not allowed. Mobile numbers must have 10 digits starting with 6–9, optionally prefixed with +91. Store receipt numbers and phone numbers as text to preserve leading zeros. Do not repeat receipt numbers, email addresses, or phone numbers.</li>
               <li>Upload an .xlsx, .xls, or .csv file (up to 15 MB and 5,000 students), then click Validate sheet. Checks use the same SR import rules and database duplicate checks as School Management.</li>
               <li>Correct invalid fields and remove duplicate rows. If a user already exists in the database, remove that row and submit those details separately to the admin office.</li>
               <li>Every row must pass before insertion. We check again when you insert. After insertion, download usernames and initial passwords from your import history.</li>
